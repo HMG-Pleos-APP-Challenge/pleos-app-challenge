@@ -1,5 +1,10 @@
 # 공동 개발 기준
 
+## 현재 사용자 지시
+
+- 명시적으로 요청받기 전까지 로컬 커밋만 한다. push, PR 생성, 원격 병합은 하지 않는다.
+- 아래 PR 운영 규칙은 사용자가 원격 협업 진행을 요청한 뒤 적용한다.
+
 - 원본 계약: https://app.notion.com/p/40f99682f1f081528152dfba45f9c99e
 - 운영 규칙: https://app.notion.com/p/40299682f1f081f08eabc6ced98314be
 - 작업 DB: https://app.notion.com/p/556be41b276a4af780e9101bfce86e85
