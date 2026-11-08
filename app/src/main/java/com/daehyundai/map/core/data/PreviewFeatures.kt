@@ -1,7 +1,7 @@
-package com.hmg.pleos.mapgame.core.data
+package com.daehyundai.map.core.data
 
-import com.hmg.pleos.mapgame.core.contract.*
-import com.hmg.pleos.mapgame.core.model.*
+import com.daehyundai.map.core.contract.*
+import com.daehyundai.map.core.model.*
 
 /** Integration-only in-memory doubles; not production rules or persistent storage. */
 class PreviewConquestFeature : ConquestFeature {

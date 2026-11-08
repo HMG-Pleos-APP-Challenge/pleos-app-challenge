@@ -4,10 +4,10 @@ plugins {
 }
 android {
     // Initial proposal from contract v0.1; peer approval is required before merging.
-    namespace = "com.hmg.pleos.mapgame"
+    namespace = "com.daehyundai.map"
     compileSdk = 34
     defaultConfig {
-        applicationId = "com.hmg.pleos.mapgame"
+        applicationId = "com.daehyundai.map"
         minSdk = 28
         targetSdk = 34
         versionCode = 1

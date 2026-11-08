@@ -1,4 +1,4 @@
-package com.hmg.pleos.mapgame.navigation
+package com.daehyundai.map.navigation
 
 object Routes {
     const val HOME = "home"

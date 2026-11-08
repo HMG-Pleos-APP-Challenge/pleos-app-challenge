@@ -1,8 +1,8 @@
-package com.hmg.pleos.mapgame.feature.exploration
+package com.daehyundai.map.feature.exploration
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import com.hmg.pleos.mapgame.core.model.ExplorationSummary
+import com.daehyundai.map.core.model.ExplorationSummary
 import java.util.Locale
 
 fun explorationRate(summary: ExplorationSummary): String =

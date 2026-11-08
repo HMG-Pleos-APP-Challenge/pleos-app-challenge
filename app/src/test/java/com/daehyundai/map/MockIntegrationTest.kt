@@ -1,9 +1,9 @@
-package com.hmg.pleos.mapgame
+package com.daehyundai.map
 
-import com.hmg.pleos.mapgame.core.data.*
-import com.hmg.pleos.mapgame.core.location.*
-import com.hmg.pleos.mapgame.core.model.*
-import com.hmg.pleos.mapgame.feature.exploration.explorationRate
+import com.daehyundai.map.core.data.*
+import com.daehyundai.map.core.location.*
+import com.daehyundai.map.core.model.*
+import com.daehyundai.map.feature.exploration.explorationRate
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*

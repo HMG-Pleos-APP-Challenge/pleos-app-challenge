@@ -1,4 +1,4 @@
-# Pleos Map Game
+# 대현대여지도
 
 현대차 Pleos 앱 공모전의 2인 공동 개발용 Android 초기 프로젝트입니다.
 현재는 **네 화면 이동과 고정 모의 데이터 연결을 확인하는 개발용 뼈대**입니다. 실제 지도, 위치 SDK, 탐험·점령 규칙, 영구 XP 저장소는 아직 구현하지 않았습니다.
@@ -36,7 +36,7 @@ macOS/Linux는 JDK 17을 선택하고 `./gradlew testDebugUnitTest lintDebug ass
 | 항목 | 초기 기준 |
 |---|---|
 | 앱 모듈 | `app` 하나 |
-| namespace / applicationId | `com.hmg.pleos.mapgame` (공동 확인 대상) |
+| namespace / applicationId | `com.daehyundai.map` (공동 확인 대상) |
 | Java / Gradle Wrapper | 17 / 8.7 (공식 SHA-256 검증) |
 | Android Gradle Plugin | 8.5.2 |
 | Kotlin / Compose Compiler | 1.9.25 / 1.5.15 |
@@ -50,7 +50,7 @@ macOS/Linux는 JDK 17을 선택하고 `./gradlew testDebugUnitTest lintDebug ass
 
 ## 역할과 폴더
 
-`app/src/main/java/com/hmg/pleos/mapgame/` 아래에 다음 폴더를 둡니다.
+`app/src/main/java/com/daehyundai/map/` 아래에 다음 폴더를 둡니다.
 
 - `core/model`, `core/contract`: 공동 데이터와 호출 규칙
 - `core/location`, `core/data`: 모의 입력과 초기 연결 확인용 구현

@@ -1,4 +1,4 @@
-package com.hmg.pleos.mapgame
+package com.daehyundai.map
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,14 +14,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.hmg.pleos.mapgame.core.data.*
-import com.hmg.pleos.mapgame.core.location.*
-import com.hmg.pleos.mapgame.core.model.*
-import com.hmg.pleos.mapgame.feature.home.HomeScreen
-import com.hmg.pleos.mapgame.feature.conquest.ConquestMapScreen
-import com.hmg.pleos.mapgame.feature.exploration.ExplorationMapScreen
-import com.hmg.pleos.mapgame.feature.profile.ProfileScreen
-import com.hmg.pleos.mapgame.navigation.Routes
+import com.daehyundai.map.core.data.*
+import com.daehyundai.map.core.location.*
+import com.daehyundai.map.core.model.*
+import com.daehyundai.map.feature.home.HomeScreen
+import com.daehyundai.map.feature.conquest.ConquestMapScreen
+import com.daehyundai.map.feature.exploration.ExplorationMapScreen
+import com.daehyundai.map.feature.profile.ProfileScreen
+import com.daehyundai.map.navigation.Routes
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
                 .verticalScroll(rememberScrollState()).padding(32.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Text("PLEOS MAP GAME", style = MaterialTheme.typography.headlineLarge)
+                Text("대현대여지도", style = MaterialTheme.typography.headlineLarge)
                 Text("공통 계약 v0.1 · 공동 승인 대기 · 개발용 Mock 통합 화면")
                 Text("실주행 사용 불가 · 위치 SDK/주차 판정 미연동 · 실제 멀티플레이 아님")
                 HorizontalDivider()

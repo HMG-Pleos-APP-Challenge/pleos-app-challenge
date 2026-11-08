@@ -1,9 +1,9 @@
-package com.hmg.pleos.mapgame.feature.profile
+package com.daehyundai.map.feature.profile
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import com.hmg.pleos.mapgame.core.model.*
-import com.hmg.pleos.mapgame.feature.exploration.explorationRate
+import com.daehyundai.map.core.model.*
+import com.daehyundai.map.feature.exploration.explorationRate
 
 @Composable fun ProfileScreen(conquest: ConquestSummary,
     exploration: ExplorationSummary, progress: UserProgress) {

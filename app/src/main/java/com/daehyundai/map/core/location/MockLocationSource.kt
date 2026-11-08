@@ -1,8 +1,8 @@
-package com.hmg.pleos.mapgame.core.location
+package com.daehyundai.map.core.location
 
-import com.hmg.pleos.mapgame.core.contract.LocationSource
-import com.hmg.pleos.mapgame.core.contract.VisitDetector
-import com.hmg.pleos.mapgame.core.model.*
+import com.daehyundai.map.core.contract.LocationSource
+import com.daehyundai.map.core.contract.VisitDetector
+import com.daehyundai.map.core.model.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 

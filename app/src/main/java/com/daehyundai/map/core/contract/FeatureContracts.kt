@@ -1,6 +1,6 @@
-package com.hmg.pleos.mapgame.core.contract
+package com.daehyundai.map.core.contract
 
-import com.hmg.pleos.mapgame.core.model.*
+import com.daehyundai.map.core.model.*
 import kotlinx.coroutines.flow.Flow
 
 interface LocationSource { suspend fun samples(): Flow<LocationSample> }

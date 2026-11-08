@@ -1,12 +1,12 @@
-package com.hmg.pleos.mapgame.feature.home
+package com.daehyundai.map.feature.home
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.hmg.pleos.mapgame.core.model.*
-import com.hmg.pleos.mapgame.navigation.Routes
+import com.daehyundai.map.core.model.*
+import com.daehyundai.map.navigation.Routes
 
 @Composable
 fun HomeScreen(conquest: ConquestSummary, exploration: ExplorationSummary,

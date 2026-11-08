@@ -1,4 +1,4 @@
-package com.hmg.pleos.mapgame.core.model
+package com.daehyundai.map.core.model
 
 // Contract v0.1 is awaiting joint approval. Do not independently change these fields.
 enum class LocationSourceType { PLEOS, MOCK }

@@ -1,8 +1,8 @@
-package com.hmg.pleos.mapgame.feature.conquest
+package com.daehyundai.map.feature.conquest
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import com.hmg.pleos.mapgame.core.model.ConquestSummary
+import com.daehyundai.map.core.model.ConquestSummary
 
 @Composable fun ConquestMapScreen(summary: ConquestSummary) {
     Text("도로 점령 지도 · 최 담당", style = MaterialTheme.typography.headlineSmall)
