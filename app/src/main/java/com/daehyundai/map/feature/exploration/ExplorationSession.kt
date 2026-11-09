@@ -3,6 +3,7 @@ package com.daehyundai.map.feature.exploration
 import android.content.Context
 import androidx.compose.runtime.*
 import com.daehyundai.map.core.model.*
+import com.daehyundai.map.core.data.FileProgressRepository
 import com.daehyundai.map.feature.exploration.data.*
 import com.daehyundai.map.feature.exploration.domain.*
 import java.io.File
@@ -11,7 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Prototype adapter. A single repository instance feeds both map and profile summary. */
-class ExplorationSession(private val userId: String, val feature: LocalExplorationFeature, val sourceType: LocationSourceType = LocationSourceType.MOCK) {
+class ExplorationSession(private val userId: String, val feature: LocalExplorationFeature, val sourceType: LocationSourceType = LocationSourceType.MOCK, private val rewards: ExplorationRewards? = null) {
+    var progress by mutableStateOf(UserProgress(userId,0,1))
+        private set
     var summary by mutableStateOf(ExplorationSummary(userId, 0, 0, 0, 0, null))
         private set
     var status by mutableStateOf(if (sourceType == LocationSourceType.MOCK) "지역 진입을 재생해 발견과 도감 개방을 확인하세요." else "SDK 위치 입력을 기다립니다")
@@ -25,7 +28,10 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
     private var replayNumber = 0
     private var lastReplayTimestamp = 0L
 
-    suspend fun refresh() {
+    suspend fun refresh(reconcileRewards:Boolean=true) {
+        if(reconcileRewards) {
+            withContext(Dispatchers.IO) { rewards?.reconcile(feature,userId) }?.let { progress=it }
+        }
         val loaded = withContext(Dispatchers.IO) {
             Triple(feature.getSummary(userId), feature.cellExploration?.unlockedCells(userId) ?: emptySet(),
                 feature.landmarkCollection?.summary(userId))
@@ -38,7 +44,7 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
     suspend fun acceptSdk(sample: LocationSample): DiscoveryResult {
         check(sourceType == LocationSourceType.PLEOS && sample.source == sourceType)
         val result = withContext(Dispatchers.IO) { feature.onLocation(sample) }
-        refresh()
+        refresh(result.newlyDiscovered || result.newlyUnlockedCells>0 || result.newlyCollectedLandmarks>0)
         val earned = buildList {
             if (result.newlyDiscovered) add("지역 최초 발견")
             if (result.newlyUnlockedCells > 0) add("도로 셀 ${result.newlyUnlockedCells}개 해금")
@@ -145,5 +151,6 @@ internal fun openExplorationSession(context: Context, userId: String,
     val landmarks = context.assets.open("exploration/namyang.landmarks").reader().use(LandmarkCatalogReader::read)
     val collection = LocalLandmarkCollection(boundary,landmarks,source,
         FileLandmarkUnlockStore(File(context.filesDir,"exploration/$prefix-landmarks.bin"),landmarks.version,source))
-    return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source)
+    val rewards=ExplorationRewards(FileProgressRepository(File(context.filesDir,"progress/$prefix-xp.bin")),prefix)
+    return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source,rewards)
 }

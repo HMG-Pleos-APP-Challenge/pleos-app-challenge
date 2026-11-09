@@ -30,18 +30,18 @@ import com.daehyundai.map.feature.conquest.ConquestMapScreen
 import com.daehyundai.map.feature.exploration.ExplorationMapScreen
 import com.daehyundai.map.feature.exploration.rememberExplorationSession
 import com.daehyundai.map.feature.profile.ProfileScreen
+import com.daehyundai.map.feature.profile.IdentityGate
 import com.daehyundai.map.navigation.Routes
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BootstrapApp() }
+        setContent { IdentityGate { userId -> BootstrapApp(userId) } }
     }
 }
 
-@Composable private fun BootstrapApp() {
-    val userId = "u-demo-01" // Synthetic account; not a production user identity.
+@Composable private fun BootstrapApp(userId:String) {
     val conquest = remember { PreviewConquestFeature() }
     val (mockSession, explorationError) = rememberExplorationSession(userId)
     val context = LocalContext.current
@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
                     Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary)
                     Routes.EXPLORATION_MAP -> ExplorationMapScreen(explorationSummary, explorationSession,
                         onReplay = { scenario -> scope.launch { explorationSession?.replay(scenario) } })
-                    Routes.PROFILE -> ProfileScreen(conquestSummary, explorationSummary, UserProgress(userId, 0, 1),
+                    Routes.PROFILE -> ProfileScreen(conquestSummary, explorationSummary, explorationSession?.progress ?: UserProgress(userId,0,1),
                         landmarks = explorationSession?.landmarkSummary)
                 }
                 if (route != Routes.HOME) OutlinedButton(onClick = { route = Routes.HOME }) { Text("홈으로") }

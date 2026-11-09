@@ -39,6 +39,8 @@ class LocalCellExploration(
         val own = records.filter { it.userId == userId }
         CellProgress(own.size, catalog.cells.size, own.maxOfOrNull { it.timestampUtcMs })
     }
+    suspend fun earnedRecords(userId:String):List<CellUnlock> = mutex.withLock { records.filter { it.userId==userId } }
+
     suspend fun unlockedCells(userId: String): Set<CellIndex> = mutex.withLock {
         records.filter { it.userId == userId }.map { knownIds.getValue(it.cellId) }.toSet()
     }

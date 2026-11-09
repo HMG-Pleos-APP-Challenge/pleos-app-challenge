@@ -54,12 +54,14 @@ class BackgroundTrackingProbe(private val context:Context,private val report:(St
             report("Observed background region=${ExplorationTracking.state.value.session!!.summary.discoveredRegionCount}, cells=${ExplorationTracking.state.value.session!!.summary.exploredUnitCount}")
             check(ExplorationTracking.state.value.session!!.summary.exploredUnitCount==4)
             check(ExplorationTracking.state.value.session!!.summary.discoveredRegionCount==1)
-            report("PASS: background SDK samples -> region=1, roadCells=4")
+            check(ExplorationTracking.state.value.session!!.progress.totalXp==140L)
+            report("PASS: background SDK samples -> region=1, roadCells=4, XP=140")
             check(withTimeoutOrNull(30_000) { ExplorationTracking.state.first { it.voice.contains("재생 완료") } }!=null) { "TTS did not finish: ${ExplorationTracking.state.value.voice}; observed=$voices" }
             report("PASS: on-device Pleos TTS playback completed")
             val restored=withContext(Dispatchers.IO) { openExplorationSession(context,user,LocationSourceType.PLEOS,state.policy.recordPrefix) }
             withContext(Dispatchers.Main) { restored.refresh() }
             check(restored.summary.discoveredRegionCount==1 && restored.summary.exploredUnitCount==4)
+            check(restored.progress.totalXp==140L && restored.progress.level==2)
             withContext(Dispatchers.Main) { ExplorationTracking.stop(context) }
             withTimeout(5_000) { ExplorationTracking.state.first { !it.running } }
             val count=ExplorationTracking.state.value.receivedCount

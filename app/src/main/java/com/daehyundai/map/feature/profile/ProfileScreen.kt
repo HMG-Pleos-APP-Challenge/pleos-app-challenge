@@ -10,7 +10,7 @@ import com.daehyundai.map.feature.exploration.formatDiscoveryTime
 @Composable fun ProfileScreen(conquest: ConquestSummary,
     exploration: ExplorationSummary, progress: UserProgress, landmarks: LandmarkCollectionSummary? = null) {
     Text("프로필", style = MaterialTheme.typography.headlineSmall)
-    Text("개발용 사용자 ${progress.userId}")
+    Text("로컬 사용자 ${progress.userId}")
     Text("발견한 지역 ${exploration.discoveredRegionCount}개 · 내부 탐험률 ${explorationRate(exploration)}")
     Text("해금 도로 셀 ${exploration.exploredUnitCount} / ${exploration.totalExplorableUnitCount}개")
     Text("해금 도로 ${exploration.unlockedRoadCount}개 · 모의 점령 기여 ${conquest.contributionCount}건")
@@ -22,6 +22,8 @@ import com.daehyundai.map.feature.exploration.formatDiscoveryTime
             Text("${card.name} · ${formatDiscoveryTime(requireNotNull(card.unlockedUtcMs))}")
         }
     }
-    Text("레벨 ${progress.level} · XP ${progress.totalXp} (고정 미리보기)")
-    Text("공통 경험치 지급·레벨 규칙은 공동 합의 후 연결합니다. 탐험 발견 기록은 앱 재시작 후에도 유지됩니다.")
+    Text("레벨 ${progress.level} · 누적 XP ${progress.totalXp}")
+    LinearProgressIndicator(progress={ (progress.totalXp%100).toFloat()/100f })
+    Text("다음 레벨까지 ${100-progress.totalXp%100} XP")
+    Text("개발용 보상: 지역 100 · 도로 셀 10 · 명소 200 XP. 100 XP마다 레벨 상승. 기록 출처별로 분리해 저장합니다.")
 }
