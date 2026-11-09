@@ -25,17 +25,20 @@ import kotlinx.coroutines.channels.Channel
 /** Manual emulator-only end-to-end check. Uses real SDK callbacks and isolated cache files. */
 @TargetApi(31)
 class SdkUnlockProbe : Instrumentation() {
+    private var backgroundOnly=false
     private var confidenceOnly=false
     private var confirmed=false
     override fun onCreate(arguments:Bundle?) {
         super.onCreate(arguments)
         confirmed=arguments?.getString("syntheticEmulator")=="true"
         confidenceOnly=arguments?.getString("mode")=="confidence"
+        backgroundOnly=arguments?.getString("mode")=="background"
         start()
     }
     override fun onStart() {
         val result=runCatching {
             if(confidenceOnly) ConfidenceProbe(targetContext,::runOnMainSync,::report).run(confirmed)
+            else if(backgroundOnly) runBlocking { BackgroundTrackingProbe(targetContext,::report).run(confirmed) }
             else runBlocking { verify() }
         }
         finish(if(result.isSuccess) Activity.RESULT_OK else Activity.RESULT_CANCELED,Bundle().apply {

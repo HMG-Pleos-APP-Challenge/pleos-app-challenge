@@ -1,5 +1,7 @@
 # Pleos 위치 SDK와 자동 해금
 
+후속 변경: [화면 밖 기록과 TTS](background-tracking-tts-review.md). 아래의 화면 생명주기 설명은 최초 SDK 연결 시점의 기록이며 현재 수신은 포그라운드 서비스가 소유한다.
+
 2026-11-09 · feature/exploration-profile · 사용자 자동 해금 적용·로컬 커밋 승인
 
 ## 동작

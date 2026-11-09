@@ -35,7 +35,7 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         landmarkSummary = loaded.third
     }
 
-    suspend fun acceptSdk(sample: LocationSample) {
+    suspend fun acceptSdk(sample: LocationSample): DiscoveryResult {
         check(sourceType == LocationSourceType.PLEOS && sample.source == sourceType)
         val result = withContext(Dispatchers.IO) { feature.onLocation(sample) }
         refresh()
@@ -51,6 +51,7 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
             result.status == EntryStatus.OUTSIDE -> "대상 지역 밖 · 해금 없음"
             else -> "SDK 위치 확인 · 지역·도로·체류 조건에 따라 자동 해금합니다"
         }
+        return result
     }
 
     suspend fun replay(scenario: String) {

@@ -1,6 +1,9 @@
 package com.daehyundai.map
 
 import android.os.Bundle
+import android.Manifest
+import android.os.Build
+import com.daehyundai.map.feature.exploration.tracking.ExplorationTracking
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,13 +45,20 @@ class MainActivity : ComponentActivity() {
     val conquest = remember { PreviewConquestFeature() }
     val (mockSession, explorationError) = rememberExplorationSession(userId)
     val context = LocalContext.current
-    var sdkEnabled by rememberSaveable { mutableStateOf(false) }
     var sdkSelected by rememberSaveable { mutableStateOf(false) }
     var permissionMessage by remember { mutableStateOf("") }
-    val sdkState = rememberPleosExploration(userId, sdkEnabled)
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        sdkEnabled = granted
-        permissionMessage = if (granted) "" else "위치 권한 거부 · 설정에서 허용한 후 다시 시작하세요"
+    val sdkState = rememberPleosExploration()
+    val sdkEnabled = sdkState.running
+    fun startTracking() {
+        runCatching { ExplorationTracking.start(context,userId) }
+            .onFailure { permissionMessage="기록을 시작하지 못했습니다. 화면에서 다시 시작해 주세요." }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val sdk=context.checkSelfPermission(PLEOS_LOCATION_PERMISSION)==PackageManager.PERMISSION_GRANTED
+        val location=context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED
+        if(sdk && location) { permissionMessage=""; startTracking() }
+        else permissionMessage="탐험 기록을 위해 위치 권한을 허용해 주세요."
     }
     val explorationSession = if (sdkSelected) sdkState.session else mockSession
     val source = remember { MockLocationSource(userId) }
@@ -74,18 +84,21 @@ class MainActivity : ComponentActivity() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
                         sdkSelected = true
-                        if (context.checkSelfPermission(PLEOS_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
-                            permissionMessage = ""; sdkEnabled = true
-                        } else permissionLauncher.launch(PLEOS_LOCATION_PERMISSION)
-                    }, enabled = !sdkEnabled) { Text("SDK 위치 시작") }
-                    OutlinedButton(onClick = { sdkEnabled = false }) { Text("수신 중지") }
-                    OutlinedButton(onClick = { sdkEnabled = false; sdkSelected = false }) { Text("모의 기록 보기") }
+                        val permissions=buildList {
+                            add(PLEOS_LOCATION_PERMISSION); add(Manifest.permission.ACCESS_FINE_LOCATION); add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                            if(Build.VERSION.SDK_INT>=33) add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        permissionLauncher.launch(permissions.toTypedArray())
+                    }, enabled = !sdkEnabled) { Text("탐험 기록 시작") }
+                    OutlinedButton(onClick = { ExplorationTracking.stop(context) }) { Text("기록 중지") }
+                    OutlinedButton(onClick = { sdkSelected = false }) { Text("모의 기록 보기") }
                 }
                 if (sdkSelected) {
                     Text(sdkState.message)
                     if (permissionMessage.isNotEmpty()) Text(permissionMessage)
                     Text(sdkState.policy.description)
-                    Text("앱을 보고 있을 때만 수신 · 에뮬레이터 SDK 기록은 실제 방문 기록과 분리합니다")
+                    Text("화면 밖에서도 기록 · 새 해금은 음성 알림 · 기록 중지로 종료")
+                    Text(sdkState.voice)
                 }
                 explorationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (!sdkSelected && mockSession == null && explorationError == null) Text("모의 기록 불러오는 중…")
