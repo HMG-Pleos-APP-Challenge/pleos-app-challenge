@@ -74,7 +74,8 @@ class MainActivity : ComponentActivity() {
                     Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary)
                     Routes.EXPLORATION_MAP -> ExplorationMapScreen(explorationSummary, explorationSession,
                         onReplay = { scenario -> scope.launch { explorationSession?.replay(scenario) } })
-                    Routes.PROFILE -> ProfileScreen(conquestSummary, explorationSummary, UserProgress(userId, 0, 1))
+                    Routes.PROFILE -> ProfileScreen(conquestSummary, explorationSummary, UserProgress(userId, 0, 1),
+                        landmarks = explorationSession?.landmarkSummary)
                 }
                 if (route != Routes.HOME) OutlinedButton(onClick = { route = Routes.HOME }) { Text("홈으로") }
             }

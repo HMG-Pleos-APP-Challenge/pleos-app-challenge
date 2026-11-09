@@ -3,11 +3,12 @@ package com.daehyundai.map.feature.profile
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import com.daehyundai.map.core.model.*
+import com.daehyundai.map.feature.exploration.domain.LandmarkCollectionSummary
 import com.daehyundai.map.feature.exploration.explorationRate
 import com.daehyundai.map.feature.exploration.formatDiscoveryTime
 
 @Composable fun ProfileScreen(conquest: ConquestSummary,
-    exploration: ExplorationSummary, progress: UserProgress) {
+    exploration: ExplorationSummary, progress: UserProgress, landmarks: LandmarkCollectionSummary? = null) {
     Text("프로필", style = MaterialTheme.typography.headlineSmall)
     Text("개발용 사용자 ${progress.userId}")
     Text("발견한 지역 ${exploration.discoveredRegionCount}개 · 내부 탐험률 ${explorationRate(exploration)}")
@@ -15,6 +16,12 @@ import com.daehyundai.map.feature.exploration.formatDiscoveryTime
     Text("해금 도로 ${exploration.unlockedRoadCount}개 · 모의 점령 기여 ${conquest.contributionCount}건")
     Text(if (exploration.discoveredRegionCount > 0) "지역 도감: 남양읍 개방" else "지역 도감: 남양읍 미발견")
     exploration.lastUpdatedUtcMs?.let { Text("최근 탐험 기록: ${formatDiscoveryTime(it)}") }
+    landmarks?.let { collection ->
+        Text("랜드마크 도감 ${collection.unlockedCount} / ${collection.totalCount}개 · 도로 셀과 별도 집계")
+        collection.cards.filter { it.unlockedUtcMs != null }.forEach { card ->
+            Text("${card.name} · ${formatDiscoveryTime(requireNotNull(card.unlockedUtcMs))}")
+        }
+    }
     Text("레벨 ${progress.level} · XP ${progress.totalXp} (고정 미리보기)")
     Text("공통 경험치 지급·레벨 규칙은 공동 합의 후 연결합니다. 탐험 발견 기록은 앱 재시작 후에도 유지됩니다.")
 }

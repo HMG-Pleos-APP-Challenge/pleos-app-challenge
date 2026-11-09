@@ -33,7 +33,8 @@ fun explorationRate(summary: ExplorationSummary): String =
     Text("개인 지도 탐험", style = MaterialTheme.typography.headlineSmall)
     Text("경기도 · 화성시 만세구 · 남양읍 / 위치 입력은 모의 데이터")
     session?.let {
-        RegionOutline(it.feature.boundary, summary.discoveredRegionCount > 0, it.feature.cellExploration?.catalog, it.unlockedCells)
+        RegionOutline(it.feature.boundary, summary.discoveredRegionCount > 0, it.feature.cellExploration?.catalog, it.unlockedCells,
+            it.feature.landmarkCollection?.catalog, it.landmarkSummary?.cards.orEmpty().filter { card -> card.unlockedUtcMs != null }.map { card -> card.id }.toSet())
         Text(it.status)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(enabled = !it.busy, onClick = { onReplay("inside") }) { Text("지역 진입 재생") }
@@ -41,6 +42,21 @@ fun explorationRate(summary: ExplorationSummary): String =
             OutlinedButton(enabled = !it.busy, onClick = { onReplay("inaccurate") }) { Text("정확도 불량 재생") }
         }
         Button(enabled = !it.busy, onClick = { onReplay("road") }) { Text("도로 이동 재생 · 셀 해금") }
+        Text("랜드마크 체류 도감 · 도로 탐험률과 별도 집계", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(enabled = !it.busy, onClick = { onReplay("landmark-short") }) { Text("짧은 방문 재생") }
+            Button(enabled = !it.busy, onClick = { onReplay("landmark-dwell") }) { Text("2분 모의 체류 재생") }
+            OutlinedButton(enabled = !it.busy, onClick = { onReplay("landmark-exit") }) { Text("이탈 후 복귀 재생") }
+        }
+        it.landmarkSummary?.let { collection ->
+            Text("랜드마크 도감 ${collection.unlockedCount} / ${collection.totalCount}개")
+            collection.cards.forEach { card ->
+                Text(if (card.unlockedUtcMs != null) "${card.name} · 수집 완료 · ${formatDiscoveryTime(card.unlockedUtcMs)}"
+                    else "${card.name} · 미수집 · 최근 연속 관측 ${card.observedMillis / 1_000} / ${card.requiredMillis / 1_000}초")
+                Text("반경 ${card.radiusMeters.toInt()}m · 정확도 25m 이하 · 위치 단절 15초 초과 시 다시 시작")
+            }
+        }
+        Text("기록된 시각을 재생하는 모의 입력입니다. 주차·실제 방문을 증명하지 않습니다.")
     }
     Text("해금한 도로 셀 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}개")
     Text("발견 지역 ${summary.discoveredRegionCount}개 · 내부 탐험률 ${explorationRate(summary)}")
@@ -48,7 +64,7 @@ fun explorationRate(summary: ExplorationSummary): String =
         else "남양읍 도감 잠김 · 최초 지역 진입을 기다립니다.")
     summary.lastUpdatedUtcMs?.let { Text("최근 탐험: ${formatDiscoveryTime(it)}") }
     Text("탐험률은 수집된 공개 도로의 100m 대상 셀 기준입니다. 전체 국토나 모든 도로의 완주율이 아닙니다.")
-    Text("회색: 대상 셀 · 초록: 해금 셀 · 주황: 모의 도로 이동 시작점")
+    Text("회색: 대상 셀 · 초록: 해금 셀 · 보라/금색: 미수집/수집 명소 · 주황: 모의 경로 시작점")
     Text("도로: © OpenStreetMap contributors / Geofabrik · 2026-11-08 · ODbL 1.0")
     Text("https://www.openstreetmap.org/copyright · https://opendatacommons.org/licenses/odbl/1-0/")
     Text("경계: SGIS 원자료 · vuski/admdongkor 가공 · 2026-10-01 · CC BY 4.0")
@@ -59,6 +75,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
 
 @Composable private fun RegionOutline(
     boundary: RegionBoundary, discovered: Boolean, catalog: RoadCellCatalog?, unlocked: Set<CellIndex>,
+    landmarks: LandmarkCatalog?, collected: Set<String>,
 ) {
     val grid = catalog?.grid ?: LocalGrid(126.8, 37.2, 100.0)
     val points = boundary.polygons.flatMap { it.rings.flatten() }.map(grid::project)
@@ -99,6 +116,10 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
             }
         }
         drawPath(outline, if (discovered) Color(0xFF9DE4CF) else Color.Gray, style = Stroke(2.dp.toPx()))
+        landmarks?.landmarks?.forEach { landmark ->
+            drawCircle(if (landmark.id in collected) Color(0xFFFFD56F) else Color(0xFFC3A9F0),
+                4.dp.toPx(),screen(grid.project(landmark.point)))
+        }
         catalog?.demo?.firstOrNull()?.let { fix ->
             drawCircle(Color(0xFFFFCF80), 4.dp.toPx(), screen(grid.project(fix.point)))
         }

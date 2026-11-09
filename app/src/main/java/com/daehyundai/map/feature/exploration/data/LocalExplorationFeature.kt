@@ -7,13 +7,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class DiscoveryResult(val status: EntryStatus, val newlyDiscovered: Boolean,
-    val newlyUnlockedCells: Int = 0, val cellStatus: CellStatus? = null)
+    val newlyUnlockedCells: Int = 0, val cellStatus: CellStatus? = null, val newlyCollectedLandmarks: Int = 0)
 
 class LocalExplorationFeature(
     val boundary: RegionBoundary,
     private val source: LocationSourceType,
     private val store: DiscoveryStore,
     val cellExploration: LocalCellExploration? = null,
+    val landmarkCollection: LocalLandmarkCollection? = null,
 ) : ExplorationFeature {
     private val mutex = Mutex()
     private var records = store.read().also { records ->
@@ -31,7 +32,9 @@ class LocalExplorationFeature(
             val discovery = records.firstOrNull { it.userId == sample.userId }
             val cell = if (discovery == null || sample.timestampUtcMs >= discovery.timestampUtcMs)
                 cellExploration?.onLocation(sample, discovery != null) else null
-            DiscoveryResult(evaluation.status, added, if (cell?.newlyUnlocked == true) 1 else 0, cell?.status)
+            val collected = if (discovery == null || sample.timestampUtcMs >= discovery.timestampUtcMs)
+                landmarkCollection?.onLocation(sample, discovery != null) ?: 0 else 0
+            DiscoveryResult(evaluation.status, added, if (cell?.newlyUnlocked == true) 1 else 0, cell?.status, collected)
         }
     }
 

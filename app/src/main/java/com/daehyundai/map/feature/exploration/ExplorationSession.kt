@@ -20,15 +20,19 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         private set
     var unlockedCells by mutableStateOf<Set<CellIndex>>(emptySet())
         private set
+    var landmarkSummary by mutableStateOf<LandmarkCollectionSummary?>(null)
+        private set
     private var replayNumber = 0
     private var lastReplayTimestamp = 0L
 
     suspend fun refresh() {
         val loaded = withContext(Dispatchers.IO) {
-            feature.getSummary(userId) to (feature.cellExploration?.unlockedCells(userId) ?: emptySet())
+            Triple(feature.getSummary(userId), feature.cellExploration?.unlockedCells(userId) ?: emptySet(),
+                feature.landmarkCollection?.summary(userId))
         }
         summary = loaded.first
         unlockedCells = loaded.second
+        landmarkSummary = loaded.third
     }
 
     suspend fun replay(scenario: String) {
@@ -36,9 +40,24 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         busy = true
         try {
             replayNumber++
-            val base = maxOf(System.currentTimeMillis(), (summary.lastUpdatedUtcMs ?: 0) + 10_000, lastReplayTimestamp + 31_000)
+            val latestCollection = landmarkSummary?.cards?.mapNotNull { it.unlockedUtcMs }?.maxOrNull() ?: 0L
+            val base = maxOf(System.currentTimeMillis(), maxOf(summary.lastUpdatedUtcMs ?: 0, latestCollection) + 10_000,
+                lastReplayTimestamp + 31_000)
             val roadDemo = feature.cellExploration?.catalog?.demo.orEmpty()
-            val fixes = if (scenario == "road") {
+            val landmark = feature.landmarkCollection?.catalog?.landmarks?.firstOrNull()
+            val fixes = if (scenario.startsWith("landmark-")) {
+                val target = requireNotNull(landmark) { "랜드마크 데이터가 없습니다" }
+                val outside = GeoPoint(target.point.latitude, target.point.longitude + .003)
+                when (scenario) {
+                    "landmark-dwell" -> {
+                        val times = (0L until target.dwellMillis step 10_000L).toList() + target.dwellMillis
+                        times.mapIndexed { index, time -> DemoRoadFix("dwell-$index",target.point,time) }
+                    }
+                    "landmark-short" -> (0..3).map { DemoRoadFix("short-$it",if(it==3) outside else target.point,it*10_000L) }
+                    "landmark-exit" -> (0..14).map { DemoRoadFix("exit-$it",if(it==7) outside else target.point,it*10_000L) }
+                    else -> error("알 수 없는 랜드마크 시나리오")
+                }
+            } else if (scenario == "road") {
                 check(roadDemo.isNotEmpty()) { "도로 모의 입력이 없습니다" }
                 roadDemo
             } else {
@@ -55,7 +74,12 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
             }
             refresh()
             val newCells = results.sumOf { it.newlyUnlockedCells }
+            val newLandmarks = results.sumOf { it.newlyCollectedLandmarks }
             status = when {
+                scenario.startsWith("landmark-") && newLandmarks > 0 -> "명소 근처 연속 체류 확인 · 랜드마크 도감 ${newLandmarks}개 획득"
+                scenario == "landmark-dwell" -> "체류 재생 완료 · 새 도감 없음 (기존 도감은 한 번만 획득)"
+                scenario == "landmark-short" -> "짧은 방문 후 이탈 · 체류 조건 미달로 새 도감 없음"
+                scenario == "landmark-exit" -> "이탈 전후 시간은 합산하지 않습니다 · 새 도감 없음"
                 scenario == "road" && newCells > 0 -> "도로 이동 확인 · 새로운 도로 셀 ${newCells}개 해금"
                 scenario == "road" -> "도로 이동 재생 완료 · 새로운 해금 없음 (기존 셀은 중복 집계하지 않음)"
                 results.any { it.newlyDiscovered } -> "남양읍 최초 발견 · 지역 도감이 열렸습니다."
@@ -95,5 +119,8 @@ private fun openExplorationSession(context: Context, userId: String): Exploratio
     val catalog = context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
     val cells = LocalCellExploration(boundary, catalog, LocationSourceType.MOCK,
         FileCellUnlockStore(File(context.filesDir, "exploration/mock-cells.bin"), catalog.version, LocationSourceType.MOCK))
-    return ExplorationSession(userId, LocalExplorationFeature(boundary, LocationSourceType.MOCK, store, cells))
+    val landmarks = context.assets.open("exploration/namyang.landmarks").reader().use(LandmarkCatalogReader::read)
+    val collection = LocalLandmarkCollection(boundary,landmarks,LocationSourceType.MOCK,
+        FileLandmarkUnlockStore(File(context.filesDir,"exploration/mock-landmarks.bin"),landmarks.version,LocationSourceType.MOCK))
+    return ExplorationSession(userId, LocalExplorationFeature(boundary, LocationSourceType.MOCK, store, cells, collection))
 }

@@ -1,0 +1,18 @@
+{
+  "source": "OpenStreetMap contributors / Geofabrik south-korea-261108.osm.pbf",
+  "license": "ODbL-1.0",
+  "landmarks": [
+    {
+      "id": "13851756178",
+      "version": 1,
+      "lat": 37.2046411,
+      "lon": 126.8159948,
+      "tags": {
+        "historic": "memorial",
+        "memorial": "statue",
+        "name": "성모마리아",
+        "statue": "virgin"
+      }
+    }
+  ]
+}
