@@ -122,13 +122,14 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
     }
 }
 
-@Composable fun rememberExplorationSession(userId: String): Pair<ExplorationSession?, String?> {
+@Composable fun rememberExplorationSession(userId: String, source: LocationSourceType = LocationSourceType.MOCK,
+    sdkRecordPrefix: String = "pleos"): Pair<ExplorationSession?, String?> {
     val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
-    var session by remember(userId) { mutableStateOf<ExplorationSession?>(null) }
-    var error by remember(userId) { mutableStateOf<String?>(null) }
-    LaunchedEffect(userId) {
+    var session by remember(userId,source,sdkRecordPrefix) { mutableStateOf<ExplorationSession?>(null) }
+    var error by remember(userId,source,sdkRecordPrefix) { mutableStateOf<String?>(null) }
+    LaunchedEffect(userId,source,sdkRecordPrefix) {
         try {
-            session = withContext(Dispatchers.IO) { openExplorationSession(context, userId) }.also { it.refresh() }
+            session = withContext(Dispatchers.IO) { openExplorationSession(context, userId,source,sdkRecordPrefix) }.also { it.refresh() }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

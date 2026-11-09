@@ -1,29 +1,35 @@
 package com.daehyundai.map.feature.profile
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.exploration.domain.LandmarkCollectionSummary
 import com.daehyundai.map.feature.exploration.explorationRate
-import com.daehyundai.map.feature.exploration.formatDiscoveryTime
 
-@Composable fun ProfileScreen(conquest: ConquestSummary,
-    exploration: ExplorationSummary, progress: UserProgress, landmarks: LandmarkCollectionSummary? = null) {
-    Text("프로필", style = MaterialTheme.typography.headlineSmall)
-    Text("로컬 사용자 ${progress.userId}")
-    Text("발견한 지역 ${exploration.discoveredRegionCount}개 · 내부 탐험률 ${explorationRate(exploration)}")
-    Text("해금 도로 셀 ${exploration.exploredUnitCount} / ${exploration.totalExplorableUnitCount}개")
-    Text("해금 도로 ${exploration.unlockedRoadCount}개 · 모의 점령 기여 ${conquest.contributionCount}건")
-    Text(if (exploration.discoveredRegionCount > 0) "지역 도감: 남양읍 개방" else "지역 도감: 남양읍 미발견")
-    exploration.lastUpdatedUtcMs?.let { Text("최근 탐험 기록: ${formatDiscoveryTime(it)}") }
-    landmarks?.let { collection ->
-        Text("랜드마크 도감 ${collection.unlockedCount} / ${collection.totalCount}개 · 도로 셀과 별도 집계")
-        collection.cards.filter { it.unlockedUtcMs != null }.forEach { card ->
-            Text("${card.name} · ${formatDiscoveryTime(requireNotNull(card.unlockedUtcMs))}")
+@Composable fun ProfileScreen(conquest:ConquestSummary,exploration:ExplorationSummary,progress:UserProgress,
+    landmarks:LandmarkCollectionSummary?=null,onRegion:()->Unit={},onCells:()->Unit={},onLandmark:(String)->Unit={},onSettings:()->Unit={}) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Text("레벨 ${progress.level}",style=MaterialTheme.typography.headlineMedium)
+            Text("누적 ${progress.totalXp} XP")
+            LinearProgressIndicator(progress={ (progress.totalXp%100).toFloat()/100f },modifier=Modifier.fillMaxWidth())
+            Text("다음 레벨까지 ${100-progress.totalXp%100} XP")
         }
     }
-    Text("레벨 ${progress.level} · 누적 XP ${progress.totalXp}")
-    LinearProgressIndicator(progress={ (progress.totalXp%100).toFloat()/100f })
-    Text("다음 레벨까지 ${100-progress.totalXp%100} XP")
-    Text("개발용 보상: 지역 100 · 도로 셀 10 · 명소 200 XP. 100 XP마다 레벨 상승. 기록 출처별로 분리해 저장합니다.")
+    ListItem(headlineContent={Text("발견한 지역 ${exploration.discoveredRegionCount}개")},supportingContent={Text("남양읍 · 탐험률 ${explorationRate(exploration)}")},
+        trailingContent={Text("지역 보기 →")},modifier=Modifier.clickable(onClick=onRegion))
+    ListItem(headlineContent={Text("해금한 도로 셀 ${exploration.exploredUnitCount}개")},trailingContent={Text("상세 →")},modifier=Modifier.clickable(onClick=onCells))
+    landmarks?.let { collection ->
+        Text("명소 도감 ${collection.unlockedCount} / ${collection.totalCount}",style=MaterialTheme.typography.titleLarge)
+        collection.cards.forEach { card ->
+            ListItem(headlineContent={Text(card.name)},supportingContent={Text(if(card.unlockedUtcMs!=null) "수집 완료" else "아직 수집하지 않았어요")},
+                trailingContent={Text("상세 →")},modifier=Modifier.clickable { onLandmark(card.id) })
+        }
+    }
+    Text("지역 발견·도로 탐험·명소 수집으로 경험치를 얻어요.")
+    OutlinedButton(onClick=onSettings,modifier=Modifier.heightIn(min=48.dp)) { Text("설정") }
 }

@@ -10,15 +10,31 @@ import com.daehyundai.map.navigation.Routes
 
 @Composable
 fun HomeScreen(conquest: ConquestSummary, exploration: ExplorationSummary,
-    onNavigate: (String) -> Unit, onReplay: () -> Unit) {
-    Text("HOME · 최 담당 진입점", style = MaterialTheme.typography.headlineSmall)
-    Text("모의 도로 기여 ${conquest.contributionCount}건 · 모의 지역 발견 ${exploration.discoveredRegionCount}개")
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = { onNavigate(Routes.CONQUEST_MAP) }) { Text("도로 점령") }
-        Button(onClick = { onNavigate(Routes.EXPLORATION_MAP) }) { Text("개인 탐험") }
-        Button(onClick = { onNavigate(Routes.PROFILE) }) { Text("프로필") }
-    }
-    OutlinedButton(onClick = onReplay, modifier = Modifier.padding(top = 12.dp)) {
-        Text("고정 Mock 경로 재생 · 주차 상태의 개발 테스트 전용")
+    onNavigate: (String) -> Unit, onReplay: () -> Unit,
+    explorationPreview: @Composable () -> Unit = {}) {
+    Text("오늘은 어디를 탐험할까요?", style=MaterialTheme.typography.titleLarge)
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
+        Card(Modifier.weight(1f)) {
+            Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text("지역 탐험",style=MaterialTheme.typography.headlineSmall)
+                explorationPreview()
+                Text("화성시 남양읍 · 발견한 지역 ${exploration.discoveredRegionCount}개")
+                Button(onClick={ onNavigate(Routes.EXPLORATION_MAP) },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                    Text("탐험하기")
+                }
+            }
+        }
+        Card(Modifier.weight(1f)) {
+            Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text("도로 점령",style=MaterialTheme.typography.headlineSmall)
+                Box(Modifier.fillMaxWidth().height(150.dp)) {
+                    Text("도로 점령 화면으로 이동합니다.",modifier=Modifier.padding(top=60.dp))
+                }
+                Text("기존 점령 화면")
+                OutlinedButton(onClick={ onNavigate(Routes.CONQUEST_MAP) },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                    Text("점령 보기")
+                }
+            }
+        }
     }
 }
