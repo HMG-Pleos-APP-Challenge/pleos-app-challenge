@@ -1,0 +1,10 @@
+{
+  "version": "osm-geofabrik-20261108-namyang-grid100-v1",
+  "regionId": "KR:SGIS:31241723",
+  "sourceWayCount": 643,
+  "clippedPathCount": 612,
+  "eligibleCellCount": 1579,
+  "demoRoad": "osm:way:1049267064:v1:p0",
+  "sha256": "c1e2771f4f016739388feaba32857df0cd435843a5fef094c7b9a6ed74f94ec9",
+  "sourceSha256": "ae66645ad4527c93e8b0a3a1b2994a3faada1eaa7da4d25ba8fcf156463915a0"
+}

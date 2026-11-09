@@ -18,28 +18,46 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         private set
     var busy by mutableStateOf(false)
         private set
+    var unlockedCells by mutableStateOf<Set<CellIndex>>(emptySet())
+        private set
     private var replayNumber = 0
     private var lastReplayTimestamp = 0L
 
-    suspend fun refresh() { summary = withContext(Dispatchers.IO) { feature.getSummary(userId) } }
+    suspend fun refresh() {
+        val loaded = withContext(Dispatchers.IO) {
+            feature.getSummary(userId) to (feature.cellExploration?.unlockedCells(userId) ?: emptySet())
+        }
+        summary = loaded.first
+        unlockedCells = loaded.second
+    }
 
     suspend fun replay(scenario: String) {
         if (busy) return
         busy = true
         try {
             replayNumber++
-            val base = maxOf(System.currentTimeMillis(), (summary.lastUpdatedUtcMs ?: 0) + 10_000, lastReplayTimestamp + 10_000)
-            lastReplayTimestamp = base + 5_000L
-            val point = if (scenario == "outside") GeoPoint(37.55, 126.98) else GeoPoint(37.1995, 126.8310)
+            val base = maxOf(System.currentTimeMillis(), (summary.lastUpdatedUtcMs ?: 0) + 10_000, lastReplayTimestamp + 31_000)
+            val roadDemo = feature.cellExploration?.catalog?.demo.orEmpty()
+            val fixes = if (scenario == "road") {
+                check(roadDemo.isNotEmpty()) { "도로 모의 입력이 없습니다" }
+                roadDemo
+            } else {
+                val point = if (scenario == "outside") GeoPoint(37.55, 126.98) else GeoPoint(37.1995, 126.8310)
+                listOf(DemoRoadFix("start", point, 0), DemoRoadFix("confirm", point, 5_000))
+            }
+            lastReplayTimestamp = base + fixes.last().offsetMillis
             val accuracy = if (scenario == "inaccurate") 150f else 5f
             val results = withContext(Dispatchers.IO) {
-                (0..1).map { index -> feature.onLocation(LocationSample(
-                    "namyang-demo-$replayNumber-$index", userId, point.latitude, point.longitude,
-                    base + index * 5_000L, accuracy, LocationSourceType.MOCK,
+                fixes.map { fix -> feature.onLocation(LocationSample(
+                    "namyang-demo-$replayNumber-${fix.id}", userId, fix.point.latitude, fix.point.longitude,
+                    base + fix.offsetMillis, accuracy, LocationSourceType.MOCK,
                 )) }
             }
             refresh()
+            val newCells = results.sumOf { it.newlyUnlockedCells }
             status = when {
+                scenario == "road" && newCells > 0 -> "도로 이동 확인 · 새로운 도로 셀 ${newCells}개 해금"
+                scenario == "road" -> "도로 이동 재생 완료 · 새로운 해금 없음 (기존 셀은 중복 집계하지 않음)"
                 results.any { it.newlyDiscovered } -> "남양읍 최초 발견 · 지역 도감이 열렸습니다."
                 results.last().status == EntryStatus.CONFIRMED -> "이미 발견한 지역입니다 · 중복 추가되지 않았습니다."
                 results.last().status == EntryStatus.OUTSIDE -> "대상 지역 밖입니다 · 발견하지 않았습니다."
@@ -74,5 +92,8 @@ private fun openExplorationSession(context: Context, userId: String): Exploratio
     val boundary = context.assets.open("exploration/namyang.boundary").reader().use(RegionBoundaryReader::read)
     val store = FileDiscoveryStore(File(context.filesDir, "exploration/mock-discoveries.bin"),
         boundary.datasetVersion, LocationSourceType.MOCK)
-    return ExplorationSession(userId, LocalExplorationFeature(boundary, LocationSourceType.MOCK, store))
+    val catalog = context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
+    val cells = LocalCellExploration(boundary, catalog, LocationSourceType.MOCK,
+        FileCellUnlockStore(File(context.filesDir, "exploration/mock-cells.bin"), catalog.version, LocationSourceType.MOCK))
+    return ExplorationSession(userId, LocalExplorationFeature(boundary, LocationSourceType.MOCK, store, cells))
 }

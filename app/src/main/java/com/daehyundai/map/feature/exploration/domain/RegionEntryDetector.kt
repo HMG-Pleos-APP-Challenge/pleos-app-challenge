@@ -60,7 +60,7 @@ class RegionEntryDetector(
         ))
     }
 
-    internal fun <T> transaction(block: () -> T): T {
+    internal suspend fun <T> transaction(block: suspend () -> T): T {
         val savedWatermarks = watermarks.toMap()
         val savedCandidates = candidates.toMap()
         return try { block() } catch (failure: Exception) {

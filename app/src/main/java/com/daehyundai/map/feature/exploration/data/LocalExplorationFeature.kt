@@ -6,12 +6,14 @@ import com.daehyundai.map.feature.exploration.domain.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-data class DiscoveryResult(val status: EntryStatus, val newlyDiscovered: Boolean)
+data class DiscoveryResult(val status: EntryStatus, val newlyDiscovered: Boolean,
+    val newlyUnlockedCells: Int = 0, val cellStatus: CellStatus? = null)
 
 class LocalExplorationFeature(
     val boundary: RegionBoundary,
     private val source: LocationSourceType,
     private val store: DiscoveryStore,
+    val cellExploration: LocalCellExploration? = null,
 ) : ExplorationFeature {
     private val mutex = Mutex()
     private var records = store.read().also { records ->
@@ -24,7 +26,12 @@ class LocalExplorationFeature(
         detector.transaction {
             val evaluation = detector.evaluate(sample)
             val added = evaluation.event?.let { persist(it) } ?: false
-            DiscoveryResult(evaluation.status, added)
+            // A failed cell write may leave a valid region discovery saved. Both operations are idempotent.
+            // Keep detector rollback around the entire call so the exact input can safely retry the cell write.
+            val discovery = records.firstOrNull { it.userId == sample.userId }
+            val cell = if (discovery == null || sample.timestampUtcMs >= discovery.timestampUtcMs)
+                cellExploration?.onLocation(sample, discovery != null) else null
+            DiscoveryResult(evaluation.status, added, if (cell?.newlyUnlocked == true) 1 else 0, cell?.status)
         }
     }
 
@@ -46,8 +53,10 @@ class LocalExplorationFeature(
 
     override suspend fun getSummary(userId: String): ExplorationSummary = mutex.withLock {
         val own = records.filter { it.userId == userId }
-        // Discovery is separate from coverage. Stage 2 road/cell dataset is not yet installed.
-        ExplorationSummary(userId, own.size, 0, 0, 0, own.maxOfOrNull { it.timestampUtcMs })
+        val cells = cellExploration?.progress(userId)
+        // A cell is not a road segment. unlockedRoadCount stays zero until a shared road-ID integration exists.
+        ExplorationSummary(userId, own.size, 0, cells?.unlocked ?: 0, cells?.total ?: 0,
+            listOfNotNull(own.maxOfOrNull { it.timestampUtcMs }, cells?.lastUpdatedUtcMs).maxOrNull())
     }
 
     suspend fun discoveries(userId: String): List<RegionDiscovered> = mutex.withLock {

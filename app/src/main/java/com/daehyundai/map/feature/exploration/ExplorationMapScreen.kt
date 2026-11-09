@@ -6,17 +6,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.daehyundai.map.core.model.ExplorationSummary
-import com.daehyundai.map.feature.exploration.domain.RegionBoundary
+import com.daehyundai.map.feature.exploration.domain.*
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.cos
 
 fun explorationRate(summary: ExplorationSummary): String =
     if (summary.totalExplorableUnitCount <= 0) "집계 없음"
@@ -31,53 +33,75 @@ fun explorationRate(summary: ExplorationSummary): String =
     Text("개인 지도 탐험", style = MaterialTheme.typography.headlineSmall)
     Text("경기도 · 화성시 만세구 · 남양읍 / 위치 입력은 모의 데이터")
     session?.let {
-        RegionOutline(it.feature.boundary, summary.discoveredRegionCount > 0)
+        RegionOutline(it.feature.boundary, summary.discoveredRegionCount > 0, it.feature.cellExploration?.catalog, it.unlockedCells)
         Text(it.status)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(enabled = !it.busy, onClick = { onReplay("inside") }) { Text("지역 진입 재생") }
             OutlinedButton(enabled = !it.busy, onClick = { onReplay("outside") }) { Text("경계 밖 재생") }
             OutlinedButton(enabled = !it.busy, onClick = { onReplay("inaccurate") }) { Text("정확도 불량 재생") }
         }
+        Button(enabled = !it.busy, onClick = { onReplay("road") }) { Text("도로 이동 재생 · 셀 해금") }
     }
+    Text("해금한 도로 셀 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}개")
     Text("발견 지역 ${summary.discoveredRegionCount}개 · 내부 탐험률 ${explorationRate(summary)}")
-    Text(if (summary.discoveredRegionCount > 0) "남양읍 도감 열림 · 세부 탐험과 랜드마크는 다음 단계입니다."
+    Text(if (summary.discoveredRegionCount > 0) "남양읍 도감 열림 · 도로 이동으로 세부 탐험을 늘릴 수 있습니다."
         else "남양읍 도감 잠김 · 최초 지역 진입을 기다립니다.")
-    summary.lastUpdatedUtcMs?.let { Text("최초 발견: ${formatDiscoveryTime(it)}") }
-    Text("지역 발견은 전체 탐험 완료가 아닙니다. 도로·셀 분모는 2차 구현에서 연결합니다.")
+    summary.lastUpdatedUtcMs?.let { Text("최근 탐험: ${formatDiscoveryTime(it)}") }
+    Text("탐험률은 수집된 공개 도로의 100m 대상 셀 기준입니다. 전체 국토나 모든 도로의 완주율이 아닙니다.")
+    Text("회색: 대상 셀 · 초록: 해금 셀 · 주황: 모의 도로 이동 시작점")
+    Text("도로: © OpenStreetMap contributors / Geofabrik · 2026-11-08 · ODbL 1.0")
+    Text("https://www.openstreetmap.org/copyright · https://opendatacommons.org/licenses/odbl/1-0/")
     Text("경계: SGIS 원자료 · vuski/admdongkor 가공 · 2026-10-01 · CC BY 4.0")
 }
 
 fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.KOREA)
     .withZone(ZoneId.of("Asia/Seoul")).format(Instant.ofEpochMilli(timestamp)) + " KST"
 
-@Composable private fun RegionOutline(boundary: RegionBoundary, discovered: Boolean) {
-    val points = boundary.polygons.flatMap { it.rings.flatten() }
-    val minLon = points.minOf { it.longitude }
-    val minLat = points.minOf { it.latitude }
-    val cosLat = cos(Math.toRadians(points.map { it.latitude }.average()))
-    val width = (points.maxOf { it.longitude } - minLon) * cosLat
-    val height = points.maxOf { it.latitude } - minLat
-    Canvas(Modifier.fillMaxWidth().height(220.dp)) {
+@Composable private fun RegionOutline(
+    boundary: RegionBoundary, discovered: Boolean, catalog: RoadCellCatalog?, unlocked: Set<CellIndex>,
+) {
+    val grid = catalog?.grid ?: LocalGrid(126.8, 37.2, 100.0)
+    val points = boundary.polygons.flatMap { it.rings.flatten() }.map(grid::project)
+    val minX = points.minOf { it.x }
+    val minY = points.minOf { it.y }
+    val width = points.maxOf { it.x } - minX
+    val height = points.maxOf { it.y } - minY
+    Canvas(Modifier.fillMaxWidth().height(280.dp)) {
         val scale = minOf((size.width - 24.dp.toPx()) / width, (size.height - 24.dp.toPx()) / height).toFloat()
         val left = (size.width - width.toFloat() * scale) / 2
         val top = (size.height - height.toFloat() * scale) / 2
-        boundary.polygons.forEach { polygon ->
-            polygon.rings.forEach { ring ->
-                val path = Path()
-                ring.forEachIndexed { index, p ->
-                    val x = left + ((p.longitude - minLon) * cosLat).toFloat() * scale
-                    val y = top + (height - (p.latitude - minLat)).toFloat() * scale
-                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        fun screen(p: MeterPoint) = Offset(left + (p.x - minX).toFloat() * scale,
+            top + (height - (p.y - minY)).toFloat() * scale)
+        val outline = Path().apply { fillType = PathFillType.EvenOdd }
+        boundary.polygons.forEach { polygon -> polygon.rings.forEach { ring ->
+            ring.forEachIndexed { index, p ->
+                val at = screen(grid.project(p))
+                if (index == 0) outline.moveTo(at.x, at.y) else outline.lineTo(at.x, at.y)
+            }
+            outline.close()
+        } }
+        clipPath(outline) {
+            catalog?.let { data ->
+                data.cells.keys.forEach { cell ->
+                    val origin = screen(MeterPoint(cell.col * grid.sizeMeters, (cell.row + 1) * grid.sizeMeters))
+                    val length = (grid.sizeMeters * scale).toFloat()
+                    drawRect(if (cell in unlocked) Color(0xFF62E4AF) else Color(0xFF747C85).copy(alpha = .25f),
+                        origin, Size(length, length))
                 }
-                path.close()
-                drawPath(path, if (discovered) Color(0xFF9DE4CF) else Color.Gray, style = Stroke(3.dp.toPx()))
+                data.roads.forEach { road ->
+                    val path = Path()
+                    road.points.forEachIndexed { index, p ->
+                        val at = screen(p)
+                        if (index == 0) path.moveTo(at.x, at.y) else path.lineTo(at.x, at.y)
+                    }
+                    drawPath(path, Color(0xFFB4B9C1).copy(alpha = .4f), style = Stroke(0.7.dp.toPx()))
+                }
             }
         }
-        // Marker is the synthetic replay point, not the user's current GPS position.
-        drawCircle(Color(0xFFFFCF80), 5.dp.toPx(), Offset(
-            left + ((126.8310 - minLon) * cosLat).toFloat() * scale,
-            top + (height - (37.1995 - minLat)).toFloat() * scale,
-        ))
+        drawPath(outline, if (discovered) Color(0xFF9DE4CF) else Color.Gray, style = Stroke(2.dp.toPx()))
+        catalog?.demo?.firstOrNull()?.let { fix ->
+            drawCircle(Color(0xFFFFCF80), 4.dp.toPx(), screen(grid.project(fix.point)))
+        }
     }
-    Text("남양읍 실제 경계 윤곽 · 점은 모의 진입 지점 / 배경지도·실제 GPS 미연동")
+    Text("남양읍 실제 경계·도로 데이터 · 모의 위치 시연 / 배경지도·실제 GPS 미연동")
 }
