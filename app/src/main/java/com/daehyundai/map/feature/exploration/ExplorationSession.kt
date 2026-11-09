@@ -11,10 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Prototype adapter. A single repository instance feeds both map and profile summary. */
-class ExplorationSession(private val userId: String, val feature: LocalExplorationFeature) {
+class ExplorationSession(private val userId: String, val feature: LocalExplorationFeature, val sourceType: LocationSourceType = LocationSourceType.MOCK) {
     var summary by mutableStateOf(ExplorationSummary(userId, 0, 0, 0, 0, null))
         private set
-    var status by mutableStateOf("지역 진입을 재생해 발견과 도감 개방을 확인하세요.")
+    var status by mutableStateOf(if (sourceType == LocationSourceType.MOCK) "지역 진입을 재생해 발견과 도감 개방을 확인하세요." else "SDK 위치 입력을 기다립니다")
         private set
     var busy by mutableStateOf(false)
         private set
@@ -35,7 +35,26 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         landmarkSummary = loaded.third
     }
 
+    suspend fun acceptSdk(sample: LocationSample) {
+        check(sourceType == LocationSourceType.PLEOS && sample.source == sourceType)
+        val result = withContext(Dispatchers.IO) { feature.onLocation(sample) }
+        refresh()
+        val earned = buildList {
+            if (result.newlyDiscovered) add("지역 최초 발견")
+            if (result.newlyUnlockedCells > 0) add("도로 셀 ${result.newlyUnlockedCells}개 해금")
+            if (result.newlyCollectedLandmarks > 0) add("랜드마크 도감 ${result.newlyCollectedLandmarks}개 수집")
+        }
+        status = when {
+            earned.isNotEmpty() -> earned.joinToString(" · ")
+            sample.accuracyMeters == null -> "정확도 미상 · 해금하지 않으며 연속 관측을 다시 시작합니다"
+            result.status == EntryStatus.REJECTED -> "위치 정확도·관측 시각 조건 미달 · 해금 없음"
+            result.status == EntryStatus.OUTSIDE -> "대상 지역 밖 · 해금 없음"
+            else -> "SDK 위치 확인 · 지역·도로·체류 조건에 따라 자동 해금합니다"
+        }
+    }
+
     suspend fun replay(scenario: String) {
+        check(sourceType == LocationSourceType.MOCK) { "SDK 기록에 모의 입력을 넣을 수 없습니다" }
         if (busy) return
         busy = true
         try {
@@ -112,15 +131,18 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
     return session to error
 }
 
-private fun openExplorationSession(context: Context, userId: String): ExplorationSession {
+internal fun openExplorationSession(context: Context, userId: String,
+    source: LocationSourceType = LocationSourceType.MOCK, sdkRecordPrefix: String = "pleos"): ExplorationSession {
+    require(sdkRecordPrefix in setOf("pleos", "pleos-emulator"))
+    val prefix = if (source == LocationSourceType.MOCK) "mock" else sdkRecordPrefix
     val boundary = context.assets.open("exploration/namyang.boundary").reader().use(RegionBoundaryReader::read)
-    val store = FileDiscoveryStore(File(context.filesDir, "exploration/mock-discoveries.bin"),
-        boundary.datasetVersion, LocationSourceType.MOCK)
+    val store = FileDiscoveryStore(File(context.filesDir, "exploration/$prefix-discoveries.bin"),
+        boundary.datasetVersion, source)
     val catalog = context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
-    val cells = LocalCellExploration(boundary, catalog, LocationSourceType.MOCK,
-        FileCellUnlockStore(File(context.filesDir, "exploration/mock-cells.bin"), catalog.version, LocationSourceType.MOCK))
+    val cells = LocalCellExploration(boundary, catalog, source,
+        FileCellUnlockStore(File(context.filesDir, "exploration/$prefix-cells.bin"), catalog.version, source))
     val landmarks = context.assets.open("exploration/namyang.landmarks").reader().use(LandmarkCatalogReader::read)
-    val collection = LocalLandmarkCollection(boundary,landmarks,LocationSourceType.MOCK,
-        FileLandmarkUnlockStore(File(context.filesDir,"exploration/mock-landmarks.bin"),landmarks.version,LocationSourceType.MOCK))
-    return ExplorationSession(userId, LocalExplorationFeature(boundary, LocationSourceType.MOCK, store, cells, collection))
+    val collection = LocalLandmarkCollection(boundary,landmarks,source,
+        FileLandmarkUnlockStore(File(context.filesDir,"exploration/$prefix-landmarks.bin"),landmarks.version,source))
+    return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source)
 }

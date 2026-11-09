@@ -31,22 +31,24 @@ fun explorationRate(summary: ExplorationSummary): String =
     onReplay: (String) -> Unit = {},
 ) {
     Text("개인 지도 탐험", style = MaterialTheme.typography.headlineSmall)
-    Text("경기도 · 화성시 만세구 · 남양읍 / 위치 입력은 모의 데이터")
+    Text("경기도 · 화성시 만세구 · 남양읍 / ${if (session?.sourceType == com.daehyundai.map.core.model.LocationSourceType.PLEOS) "Pleos SDK 입력" else "모의 입력"}")
     session?.let {
         RegionOutline(it.feature.boundary, summary.discoveredRegionCount > 0, it.feature.cellExploration?.catalog, it.unlockedCells,
             it.feature.landmarkCollection?.catalog, it.landmarkSummary?.cards.orEmpty().filter { card -> card.unlockedUtcMs != null }.map { card -> card.id }.toSet())
         Text(it.status)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(enabled = !it.busy, onClick = { onReplay("inside") }) { Text("지역 진입 재생") }
-            OutlinedButton(enabled = !it.busy, onClick = { onReplay("outside") }) { Text("경계 밖 재생") }
-            OutlinedButton(enabled = !it.busy, onClick = { onReplay("inaccurate") }) { Text("정확도 불량 재생") }
-        }
-        Button(enabled = !it.busy, onClick = { onReplay("road") }) { Text("도로 이동 재생 · 셀 해금") }
-        Text("랜드마크 체류 도감 · 도로 탐험률과 별도 집계", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = !it.busy, onClick = { onReplay("landmark-short") }) { Text("짧은 방문 재생") }
-            Button(enabled = !it.busy, onClick = { onReplay("landmark-dwell") }) { Text("2분 모의 체류 재생") }
-            OutlinedButton(enabled = !it.busy, onClick = { onReplay("landmark-exit") }) { Text("이탈 후 복귀 재생") }
+        if (it.sourceType == com.daehyundai.map.core.model.LocationSourceType.MOCK) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(enabled = !it.busy, onClick = { onReplay("inside") }) { Text("지역 진입 재생") }
+                OutlinedButton(enabled = !it.busy, onClick = { onReplay("outside") }) { Text("경계 밖 재생") }
+                OutlinedButton(enabled = !it.busy, onClick = { onReplay("inaccurate") }) { Text("정확도 불량 재생") }
+            }
+            Button(enabled = !it.busy, onClick = { onReplay("road") }) { Text("도로 이동 재생 · 셀 해금") }
+            Text("랜드마크 체류 도감 · 도로 탐험률과 별도 집계", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = !it.busy, onClick = { onReplay("landmark-short") }) { Text("짧은 방문 재생") }
+                Button(enabled = !it.busy, onClick = { onReplay("landmark-dwell") }) { Text("2분 모의 체류 재생") }
+                OutlinedButton(enabled = !it.busy, onClick = { onReplay("landmark-exit") }) { Text("이탈 후 복귀 재생") }
+            }
         }
         it.landmarkSummary?.let { collection ->
             Text("랜드마크 도감 ${collection.unlockedCount} / ${collection.totalCount}개")
@@ -56,7 +58,7 @@ fun explorationRate(summary: ExplorationSummary): String =
                 Text("반경 ${card.radiusMeters.toInt()}m · 정확도 25m 이하 · 위치 단절 15초 초과 시 다시 시작")
             }
         }
-        Text("기록된 시각을 재생하는 모의 입력입니다. 주차·실제 방문을 증명하지 않습니다.")
+        Text(if (it.sourceType == com.daehyundai.map.core.model.LocationSourceType.MOCK) "기록된 시각을 재생하는 모의 입력입니다. 주차·실제 방문을 증명하지 않습니다." else "SDK 수신 기록 · 주차 여부를 판정하지 않습니다.")
     }
     Text("해금한 도로 셀 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}개")
     Text("발견 지역 ${summary.discoveredRegionCount}개 · 내부 탐험률 ${explorationRate(summary)}")
@@ -124,5 +126,5 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
             drawCircle(Color(0xFFFFCF80), 4.dp.toPx(), screen(grid.project(fix.point)))
         }
     }
-    Text("남양읍 실제 경계·도로 데이터 · 모의 위치 시연 / 배경지도·실제 GPS 미연동")
+    Text("남양읍 실제 경계·도로 데이터 / 개발용 윤곽 지도 · 배경지도 타일 없음")
 }
