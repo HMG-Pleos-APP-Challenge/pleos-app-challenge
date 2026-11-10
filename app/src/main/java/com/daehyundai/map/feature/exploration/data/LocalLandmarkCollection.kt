@@ -32,6 +32,12 @@ class LocalLandmarkCollection(
         }
     }
 
+    suspend fun mergeConfirmed(userId:String, grants:List<com.daehyundai.map.feature.exploration.cloud.CloudGrant>) = mutex.withLock {
+        val additions=grants.filter { it.kind=="landmark" && it.targetId in knownIds && records.none { row -> row.userId==userId && row.landmarkId==it.targetId } }
+            .map { LandmarkUnlock(userId,it.targetId,it.timestamp,source) }
+        if(additions.isNotEmpty()) { val updated=records+additions;store.write(updated);records=updated }
+    }
+
     suspend fun summary(userId: String): LandmarkCollectionSummary = mutex.withLock {
         val own = records.filter { it.userId == userId }.associateBy { it.landmarkId }
         LandmarkCollectionSummary(userId,catalog.landmarks.map { landmark ->

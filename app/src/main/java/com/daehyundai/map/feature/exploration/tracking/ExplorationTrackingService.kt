@@ -70,12 +70,18 @@ class ExplorationTrackingService:Service() {
                     openExplorationSession(this@ExplorationTrackingService,userId,LocationSourceType.PLEOS,policy.recordPrefix)
                 }
                 session.refresh()
+                launch {
+                    while(isActive) {
+                        session.syncCloud()
+                        delay(15_000)
+                    }
+                }
                 ExplorationTracking.mutable.update { it.copy(session=session,policy=policy,message="SDK 위치 업데이트 대기") }
                 PleosLocationSource(userId,{ PleosSdkConnection(this@ExplorationTrackingService) },accuracyPolicy=policy)
                     .samples().collect { sample ->
                         val result=session.acceptSdk(sample)
                         announcements?.record(result)
-                        ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status) }
+                        ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status+" · "+session.cloudStatus) }
                     }
             } catch(cancelled:CancellationException) { throw cancelled
             } catch(_:Exception) {

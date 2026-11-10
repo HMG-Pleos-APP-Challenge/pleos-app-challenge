@@ -12,7 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Prototype adapter. A single repository instance feeds both map and profile summary. */
-class ExplorationSession(private val userId: String, val feature: LocalExplorationFeature, val sourceType: LocationSourceType = LocationSourceType.MOCK, private val rewards: ExplorationRewards? = null) {
+class ExplorationSession(private val userId: String, val feature: LocalExplorationFeature, val sourceType: LocationSourceType = LocationSourceType.MOCK, private val rewards: ExplorationRewards? = null, private val cloud: com.daehyundai.map.feature.exploration.cloud.CloudSync? = null) {
     var progress by mutableStateOf(UserProgress(userId,0,1))
         private set
     var summary by mutableStateOf(ExplorationSummary(userId, 0, 0, 0, 0, null))
@@ -25,6 +25,20 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         private set
     var landmarkSummary by mutableStateOf<LandmarkCollectionSummary?>(null)
         private set
+    var cloudStatus by mutableStateOf("로컬 기록 · 서버 미연결")
+        private set
+    private var confirmedProgress:UserProgress?=null
+    suspend fun syncCloud() {
+        try {
+            cloud?.sync()?.let { snapshot ->
+                withContext(Dispatchers.IO) { feature.mergeConfirmed(userId,snapshot.grants) }
+                confirmedProgress=UserProgress(userId,snapshot.xp,(snapshot.xp/100+1).toInt())
+                refresh()
+            }
+            cloudStatus=cloud?.message ?: "모의 기록 · 서버 전송 안 함"
+        } catch(e:CancellationException) { throw e
+        } catch(e:Exception) { cloudStatus="서버 기록 복원 실패 · 로컬 기록 보존" }
+    }
     private var replayNumber = 0
     private var lastReplayTimestamp = 0L
 
@@ -36,6 +50,7 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
             Triple(feature.getSummary(userId), feature.cellExploration?.unlockedCells(userId) ?: emptySet(),
                 feature.landmarkCollection?.summary(userId))
         }
+        confirmedProgress?.let { progress=it }
         summary = loaded.first
         unlockedCells = loaded.second
         landmarkSummary = loaded.third
@@ -43,6 +58,7 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
 
     suspend fun acceptSdk(sample: LocationSample): DiscoveryResult {
         check(sourceType == LocationSourceType.PLEOS && sample.source == sourceType)
+        cloud?.enqueue(sample)
         val result = withContext(Dispatchers.IO) { feature.onLocation(sample) }
         refresh(result.newlyDiscovered || result.newlyUnlockedCells>0 || result.newlyCollectedLandmarks>0)
         val earned = buildList {
@@ -153,5 +169,6 @@ internal fun openExplorationSession(context: Context, userId: String,
     val collection = LocalLandmarkCollection(boundary,landmarks,source,
         FileLandmarkUnlockStore(File(context.filesDir,"exploration/$prefix-landmarks.bin"),landmarks.version,source))
     val rewards=ExplorationRewards(FileProgressRepository(File(context.filesDir,"progress/$prefix-xp.bin")),prefix)
-    return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source,rewards)
+    return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source,rewards,
+        if(source == LocationSourceType.PLEOS) com.daehyundai.map.feature.exploration.cloud.CloudSync(context,userId,prefix) else null)
 }

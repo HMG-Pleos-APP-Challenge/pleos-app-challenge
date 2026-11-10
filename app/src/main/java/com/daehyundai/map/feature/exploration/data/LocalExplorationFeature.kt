@@ -54,6 +54,14 @@ class LocalExplorationFeature(
         return true
     }
 
+    suspend fun mergeConfirmed(userId:String, grants:List<com.daehyundai.map.feature.exploration.cloud.CloudGrant>) = mutex.withLock {
+        grants.filter { it.kind=="region" && it.targetId==boundary.id }.forEach {
+            persist(RegionDiscovered("cloud:${it.targetId}:$userId",userId,it.targetId,it.timestamp,source))
+        }
+        cellExploration?.mergeConfirmed(userId,grants)
+        landmarkCollection?.mergeConfirmed(userId,grants)
+    }
+
     override suspend fun getSummary(userId: String): ExplorationSummary = mutex.withLock {
         val own = records.filter { it.userId == userId }
         val cells = cellExploration?.progress(userId)

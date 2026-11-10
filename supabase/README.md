@@ -40,4 +40,4 @@ Security: all user tables have RLS; only own profile/grants are readable. Grant/
 Android: JDK17, gradlew testDebugUnitTest assembleDebug lintDebug. 82 tests passed including 4 Android 28 SQLite outbox tests.
 Backend: cd supabase && npm ci && npm test (Node 22+). Isolated WASM PostgreSQL/PostGIS tests stub Supabase auth.uid()/roles locally, never touch cloud data. Tests exercise 1581 catalog targets, spatial grant, XP idempotency after lost response, real/emulator isolation, null-accuracy rejection, direct-write denial, RLS cross-user privacy and unauthenticated RPC denial. Hosted GoTrue integration is separate and requires Anonymous Sign-Ins enabled.
 
-At preparation time public API connectivity was verified, but anonymous signup returned anonymous_provider_disabled and remote DDL has NOT been applied. Never describe local test success as deployed backend success.
+Hosted API connectivity and anonymous signup succeeded. Remote RPC returned PGRST202 (sync_exploration_v1 not installed); remote DDL is still pending the dashboard SQL Editor step. Local validation does not imply deployed backend success.

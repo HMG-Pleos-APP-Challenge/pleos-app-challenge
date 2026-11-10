@@ -35,6 +35,11 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
 @Composable fun ExplorationMapScreen(summary:ExplorationSummary,session:ExplorationSession?,onRegion:()->Unit,onSources:()->Unit) {
     Text("익숙한 길에서 시작하는 새로운 탐험",style=MaterialTheme.typography.titleLarge)
     Text("나의 발자취가 쌓인 지역을 확인해 보세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+    session?.let {
+        Text(it.cloudStatus,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(it.sourceType==com.daehyundai.map.core.model.LocationSourceType.PLEOS)
+            Text("지도에는 로컬 탐험 기록도 표시됩니다. 서버 미확정 기록은 점령·랭킹에 반영되지 않아요.",style=MaterialTheme.typography.bodySmall)
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun MapCard(modifier:Modifier) {
             Card(onClick=onRegion,modifier=modifier,colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) {

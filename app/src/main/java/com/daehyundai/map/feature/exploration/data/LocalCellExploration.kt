@@ -35,6 +35,12 @@ class LocalCellExploration(
         }
     }
 
+    suspend fun mergeConfirmed(userId:String, grants:List<com.daehyundai.map.feature.exploration.cloud.CloudGrant>) = mutex.withLock {
+        val additions=grants.filter { it.kind=="cell" && it.targetId in knownIds && records.none { row -> row.userId==userId && row.cellId==it.targetId } }
+            .map { CellUnlock(userId,it.targetId,it.timestamp,source) }
+        if(additions.isNotEmpty()) { val updated=records+additions;store.write(updated);records=updated }
+    }
+
     suspend fun progress(userId: String): CellProgress = mutex.withLock {
         val own = records.filter { it.userId == userId }
         CellProgress(own.size, catalog.cells.size, own.maxOfOrNull { it.timestampUtcMs })
