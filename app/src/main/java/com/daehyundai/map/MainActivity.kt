@@ -54,6 +54,13 @@ private object DetailPages {
 
 @Composable private fun PrototypeApp(userId:String) {
     val context=LocalContext.current
+    val vehicleState by com.daehyundai.map.feature.exploration.tracking.VehicleSafety.state.collectAsState()
+    DisposableEffect(context) {
+        val release=com.daehyundai.map.feature.exploration.tracking.VehicleSafety.acquire(context)
+        onDispose { release() }
+    }
+    val autoPrefs=remember { context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE) }
+    var automatic by remember { mutableStateOf(autoPrefs.getBoolean("automatic",false)) }
     val developerEnabled=context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE!=0
     val conquest=remember { PreviewConquestFeature() }
     val (mockSession,mockError)=rememberExplorationSession(userId)
@@ -75,7 +82,7 @@ private object DetailPages {
     fun openLandmark(id:String) { landmarkId=id;go(DetailPages.LANDMARK) }
     var permissionMessage by remember { mutableStateOf("") }
     fun startTracking() {
-        runCatching { ExplorationTracking.start(context,userId) }
+        runCatching { ExplorationTracking.start(context,userId,automatic) }
             .onFailure { permissionMessage="기록을 시작하지 못했어요. 다시 시도해 주세요." }
     }
     val permissionLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -83,7 +90,7 @@ private object DetailPages {
         val location=context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
             context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED
         if(sdk && location) { permissionMessage="";startTracking() }
-        else permissionMessage="탐험을 기록하려면 위치 권한을 허용해 주세요."
+        else { automatic=false;autoPrefs.edit().putBoolean("automatic",false).apply();permissionMessage="탐험을 기록하려면 위치 권한을 허용해 주세요." }
     }
     fun requestTracking() {
         sdkSelected=true
@@ -93,6 +100,7 @@ private object DetailPages {
         }
         permissionLauncher.launch(permissions.toTypedArray())
     }
+    LaunchedEffect(userId) { if(automatic) requestTracking() }
     val scope=rememberCoroutineScope()
     val source=remember { MockLocationSource(userId) }
     val detector=remember { MockVisitDetector() }
@@ -130,7 +138,11 @@ private object DetailPages {
                         verticalArrangement=Arrangement.spacedBy(16.dp)) {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
-                        when(page) {
+                        if(vehicleState!=com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.UNRESTRICTED) {
+                            Text(if(vehicleState==com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.RESTRICTED)
+                                "운행 중에는 탐험을 자동으로 기록해요. 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
+                            if(recording) OutlinedButton(onClick={ExplorationTracking.stop(context)}) { Text("기록 중지") }
+                        } else when(page) {
                             Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},onReplay={
                                 // Keep the existing legacy conquest preview callback; no conquest logic is changed.
                                 scope.launch {
@@ -149,7 +161,10 @@ private object DetailPages {
                             Routes.PROFILE -> ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
                                 {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)})
                             DetailPages.SETTINGS -> PrototypeSettings(recording,developerEnabled,{ExplorationTracking.stop(context)},
-                                {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)})
+                                {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)},automatic,{ enabled ->
+                                    automatic=enabled;autoPrefs.edit().putBoolean("automatic",enabled).apply()
+                                    if(enabled) requestTracking() else ExplorationTracking.stop(context)
+                                })
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,
                                 {sdkSelected=it},{scenario -> scope.launch { mockSession?.replay(scenario) }}) else Text("개발자 도구는 개발 빌드에서만 열 수 있어요.")
                             DetailPages.SOURCES -> MapSources()

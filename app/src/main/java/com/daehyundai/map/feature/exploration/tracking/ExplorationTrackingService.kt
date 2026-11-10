@@ -26,9 +26,9 @@ data class TrackingSnapshot(val running:Boolean=false,val userId:String?=null,
 object ExplorationTracking {
     internal val mutable=MutableStateFlow(TrackingSnapshot())
     val state=mutable.asStateFlow()
-    fun start(context:Context,userId:String) {
+    fun start(context:Context,userId:String,automatic:Boolean=false) {
         require(userId.isNotBlank())
-        context.startForegroundService(Intent(context,ExplorationTrackingService::class.java).putExtra("userId",userId))
+        context.startForegroundService(Intent(context,ExplorationTrackingService::class.java).putExtra("userId",userId).putExtra("automatic",automatic))
     }
     fun stop(context:Context) { context.stopService(Intent(context,ExplorationTrackingService::class.java)) }
 }
@@ -36,16 +36,20 @@ object ExplorationTracking {
 class ExplorationTrackingService:Service() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var job:Job?=null
+    private var automatic=false
+    private var releaseVehicle:(()->Unit)?=null
     private var speaker:PleosUnlockSpeaker?=null
     private var announcements:UnlockAnnouncements?=null
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onCreate() {
         super.onCreate()
+        releaseVehicle=VehicleSafety.acquire(this)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL,"탐험 기록",NotificationManager.IMPORTANCE_LOW))
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
         if(intent?.action==STOP) { stopSelf(); return START_NOT_STICKY }
+        automatic=intent?.getBooleanExtra("automatic",false) ?: false
         if(job?.isActive==true) return START_NOT_STICKY
         val userId=intent?.getStringExtra("userId")
         if(userId.isNullOrBlank()) { stopSelf(); return START_NOT_STICKY }
@@ -77,8 +81,16 @@ class ExplorationTrackingService:Service() {
                     }
                 }
                 ExplorationTracking.mutable.update { it.copy(session=session,policy=policy,message="SDK 위치 업데이트 대기") }
+                var wasRecording=false
                 PleosLocationSource(userId,{ PleosSdkConnection(this@ExplorationTrackingService) },accuracyPolicy=policy)
                     .samples().collect { sample ->
+                        if(!shouldRecord(automatic,VehicleSafety.state.value)) {
+                            if(wasRecording) session.acceptSdk(sample.copy(accuracyMeters=null))
+                            wasRecording=false
+                            ExplorationTracking.mutable.update { it.copy(message="자동 기록 대기 · 차량 운행 상태가 확인되면 기록합니다") }
+                            return@collect
+                        }
+                        wasRecording=true
                         val result=session.acceptSdk(sample)
                         announcements?.record(result)
                         ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status+" · "+session.cloudStatus) }
@@ -99,7 +111,7 @@ class ExplorationTrackingService:Service() {
             .setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null,"기록 중지",stop).build()).build()
     }
     override fun onDestroy() {
-        announcements?.cancel(); speaker?.close(); scope.cancel()
+        announcements?.cancel(); speaker?.close(); scope.cancel();releaseVehicle?.invoke()
         ExplorationTracking.mutable.update { it.copy(running=false,message=if(it.message.startsWith("기록 오류")) it.message else "탐험 기록 중지") }
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()

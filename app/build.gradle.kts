@@ -14,6 +14,7 @@ android {
     // Initial proposal from contract v0.1; peer approval is required before merging.
     namespace = "com.daehyundai.map"
     compileSdk = 34
+    useLibrary("android.car")
     defaultConfig {
         applicationId = "com.daehyundai.map"
         minSdk = 28

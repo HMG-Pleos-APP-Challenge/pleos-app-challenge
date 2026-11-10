@@ -8,7 +8,15 @@ import androidx.compose.ui.unit.dp
 import com.daehyundai.map.feature.exploration.ExplorationSession
 import com.daehyundai.map.feature.exploration.tracking.TrackingSnapshot
 
-@Composable fun PrototypeSettings(recording:Boolean,developerEnabled:Boolean,onStop:()->Unit,onSources:()->Unit,onDeveloper:()->Unit) {
+@Composable fun PrototypeSettings(recording:Boolean,developerEnabled:Boolean,onStop:()->Unit,onSources:()->Unit,onDeveloper:()->Unit,automatic:Boolean=false,onAutomatic:(Boolean)->Unit={}) {
+    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("자동 탐험 기록",style=MaterialTheme.typography.titleMedium)
+            Text("켜 두면 차량 운행 모드에서 기록하고, 주차 모드에서는 대기해요.")
+        }
+        Switch(checked=automatic,onCheckedChange=onAutomatic)
+    }
+    Text("자동 기록은 앱에서 한 번 켜야 하며, 앱 강제 종료·기기 재시작 후 앱을 다시 열어주세요.")
     Text("탐험 기록",style=MaterialTheme.typography.titleLarge)
     Text(if(recording) "기록 중 · 화면 밖에서도 탐험을 기록해요." else "현재 탐험을 기록하고 있지 않아요.")
     if(recording) OutlinedButton(onClick=onStop) { Text("기록 중지") }
