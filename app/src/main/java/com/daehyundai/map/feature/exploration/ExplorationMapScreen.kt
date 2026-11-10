@@ -8,6 +8,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -35,10 +37,14 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
 @Composable fun ExplorationMapScreen(summary:ExplorationSummary,session:ExplorationSession?,onRegion:()->Unit,onSources:()->Unit) {
     Text("익숙한 길에서 시작하는 새로운 탐험",style=MaterialTheme.typography.titleLarge)
     Text("나의 발자취가 쌓인 지역을 확인해 보세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+    val syncScope=rememberCoroutineScope()
     session?.let {
         Text(it.cloudStatus,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(it.sourceType==com.daehyundai.map.core.model.LocationSourceType.PLEOS)
-            Text("지도에는 로컬 탐험 기록도 표시됩니다. 서버 미확정 기록은 점령·랭킹에 반영되지 않아요.",style=MaterialTheme.typography.bodySmall)
+            Column {
+                Text("탐험률·경험치는 서버 확정 기준이에요. 기기에만 남은 구역 ${it.localOnlyCells}개는 지도에서 별도로 확인할 수 있어요.",style=MaterialTheme.typography.bodySmall)
+                TextButton(onClick={syncScope.launch { it.syncCloud() }}) { Text("기록 동기화") }
+            }
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun MapCard(modifier:Modifier) {

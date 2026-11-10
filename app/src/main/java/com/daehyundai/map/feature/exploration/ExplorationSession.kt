@@ -28,10 +28,14 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
     var cloudStatus by mutableStateOf("로컬 기록 · 서버 미연결")
         private set
     private var confirmedProgress:UserProgress?=null
+    private var confirmedSnapshot:com.daehyundai.map.feature.exploration.cloud.CloudSnapshot?=null
+    var localOnlyCells by mutableIntStateOf(0)
+        private set
     suspend fun syncCloud() {
         try {
             cloud?.sync()?.let { snapshot ->
                 withContext(Dispatchers.IO) { feature.mergeConfirmed(userId,snapshot.grants) }
+                confirmedSnapshot=snapshot
                 confirmedProgress=UserProgress(userId,snapshot.xp,(snapshot.xp/100+1).toInt())
                 refresh()
             }
@@ -50,8 +54,13 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
             Triple(feature.getSummary(userId), feature.cellExploration?.unlockedCells(userId) ?: emptySet(),
                 feature.landmarkCollection?.summary(userId))
         }
-        confirmedProgress?.let { progress=it }
-        summary = loaded.first
+        if(cloud!=null && com.daehyundai.map.feature.exploration.cloud.SupabaseCloud.configured) {
+            if(confirmedSnapshot==null) confirmedSnapshot=cloud.cached()
+            val xp=confirmedSnapshot?.xp ?: 0L
+            progress=UserProgress(userId,xp,(xp/100+1).toInt())
+            summary=com.daehyundai.map.feature.exploration.cloud.confirmedSummary(userId,loaded.first.totalExplorableUnitCount,confirmedSnapshot)
+            localOnlyCells=(loaded.second.size-summary.exploredUnitCount).coerceAtLeast(0)
+        } else summary=loaded.first
         unlockedCells = loaded.second
         landmarkSummary = loaded.third
     }

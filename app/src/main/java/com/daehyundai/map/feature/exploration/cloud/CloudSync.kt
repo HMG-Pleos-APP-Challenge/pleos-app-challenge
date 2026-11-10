@@ -19,6 +19,9 @@ class CloudSync(context:Context,private val owner:String,private val partition:S
         catch(e:CancellationException) { throw e }
         catch(e:Exception) { message="전송 대기열 저장 실패 · 로컬 해금 기록 보존" }
     }
+    suspend fun cached():CloudSnapshot? = withContext(Dispatchers.IO) {
+        try { cache.snapshot(owner,partition,catalogVersion) } catch(_:CatalogVersionMismatch) { null }
+    }
     suspend fun sync():CloudSnapshot? = mutex.withLock { withContext(Dispatchers.IO) {
         if(!SupabaseCloud.configured) return@withContext null
         try {
