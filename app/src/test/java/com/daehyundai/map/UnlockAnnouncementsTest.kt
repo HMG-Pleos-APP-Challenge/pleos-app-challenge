@@ -18,7 +18,7 @@ class UnlockAnnouncementsTest {
         advanceTimeBy(9_999); assertTrue(spoken.isEmpty())
         advanceUntilIdle()
         assertEquals(1,spoken.size)
-        assertTrue(spoken.single().contains("도로 셀 3개"))
+        assertTrue(spoken.single().contains("탐험 구역 3개"))
         assertTrue(spoken.single().contains("랜드마크 도감 1개"))
         notifier.record(DiscoveryResult(EntryStatus.CONFIRMED,false)); advanceUntilIdle(); assertEquals(1,spoken.size)
     }
@@ -26,5 +26,17 @@ class UnlockAnnouncementsTest {
         val spoken=mutableListOf<String>();val notifier=UnlockAnnouncements(this,{ spoken.add(it) })
         notifier.record(DiscoveryResult(EntryStatus.CONFIRMED,true));notifier.cancel()
         advanceUntilIdle();assertTrue(spoken.isEmpty())
+    }
+    @Test fun rapidUnlocksAreCombinedUntilMinimumVoiceInterval()=runTest {
+        val spoken=mutableListOf<String>()
+        val notifier=UnlockAnnouncements(this,{spoken.add(it)},nowMillis={testScheduler.currentTime})
+        notifier.record(DiscoveryResult(EntryStatus.CONFIRMED,false,1))
+        advanceTimeBy(10_000);runCurrent();assertEquals(1,spoken.size)
+        notifier.record(DiscoveryResult(EntryStatus.CONFIRMED,false,2))
+        advanceTimeBy(20_000)
+        notifier.record(DiscoveryResult(EntryStatus.CONFIRMED,false,3))
+        advanceTimeBy(39_999);runCurrent();assertEquals(1,spoken.size)
+        advanceTimeBy(1);runCurrent();assertEquals(2,spoken.size)
+        assertTrue(spoken.last().contains("탐험 구역 5개"))
     }
 }
