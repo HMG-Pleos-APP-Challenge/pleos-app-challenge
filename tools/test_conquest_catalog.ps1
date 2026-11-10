@@ -5,7 +5,10 @@ $temporarySource = [IO.Path]::GetTempFileName()
 $temporaryOutput = [IO.Path]::GetTempFileName()
 try {
     & (Join-Path $PSScriptRoot 'build_conquest_catalog.ps1') -Source $source -Destination $temporaryOutput | Out-Null
-    if ((Get-FileHash $asset).Hash -ne (Get-FileHash $temporaryOutput).Hash) { throw 'Catalog is not reproducible' }
+    # Git may check out text as CRLF on Windows. Compare the canonical LF content.
+    $expected=[IO.File]::ReadAllText([IO.Path]::GetFullPath($asset)).Replace("`r`n","`n")
+    $actual=[IO.File]::ReadAllText($temporaryOutput).Replace("`r`n","`n")
+    if ($expected -cne $actual) { throw 'Catalog is not reproducible' }
     $data = Get-Content $source -Raw | ConvertFrom-Json
     foreach ($way in $data.ways | Where-Object candidate) { $way.tags | Add-Member -NotePropertyName oneway -NotePropertyValue 'yes' -Force }
     $data | ConvertTo-Json -Depth 14 | Set-Content $temporarySource -Encoding utf8NoBOM

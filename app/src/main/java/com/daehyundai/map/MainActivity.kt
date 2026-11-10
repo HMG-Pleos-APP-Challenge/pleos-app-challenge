@@ -19,6 +19,7 @@ import com.daehyundai.map.core.location.*
 import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.home.HomeScreen
 import com.daehyundai.map.feature.conquest.ConquestMapScreen
+import com.daehyundai.map.feature.conquest.rememberConquestSession
 import com.daehyundai.map.feature.exploration.ExplorationMapScreen
 import com.daehyundai.map.feature.profile.ProfileScreen
 import com.daehyundai.map.navigation.Routes
@@ -33,17 +34,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun BootstrapApp() {
     val userId = "u-demo-01" // Synthetic account; not a production user identity.
-    val conquest = remember { PreviewConquestFeature() }
+    val (conquest, conquestLoadError) = rememberConquestSession(userId)
     val exploration = remember { PreviewExplorationFeature() }
     val source = remember { MockLocationSource(userId) }
     val detector = remember { MockVisitDetector() }
     val scope = rememberCoroutineScope()
     var route by rememberSaveable { mutableStateOf(Routes.HOME) }
     var revision by remember { mutableIntStateOf(0) }
-    var conquestSummary by remember { mutableStateOf(ConquestSummary(userId, null, 0, 0, null)) }
+    val conquestSummary = conquest?.state?.summary ?: ConquestSummary(userId, null, 0, 0, null)
     var explorationSummary by remember { mutableStateOf(ExplorationSummary(userId, 0, 0, 0, 0, null)) }
     LaunchedEffect(revision) {
-        conquestSummary = conquest.getSummary(userId)
         explorationSummary = exploration.getSummary(userId)
     }
     BackHandler(route != Routes.HOME) { route = Routes.HOME }
@@ -56,19 +56,21 @@ class MainActivity : ComponentActivity() {
                 Text("공통 계약 v0.1 · 공동 승인 대기 · 개발용 Mock 통합 화면")
                 Text("실주행 사용 불가 · 위치 SDK/주차 판정 미연동 · 실제 멀티플레이 아님")
                 HorizontalDivider()
+                (conquestLoadError ?: conquest?.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 when (route) {
                     Routes.HOME -> HomeScreen(conquestSummary, explorationSummary,
                         onNavigate = { route = it }, onReplay = {
                             scope.launch {
                                 source.samples().collect { sample ->
                                     val batch = detector.onSample(sample)
-                                    batch.roads.forEach { conquest.onRoadVisited(it) }
+                                    conquest?.onSample(sample)
                                     batch.regions.forEach { exploration.onRegionDiscovered(it) }
                                 }
                                 revision++
                             }
-                        })
-                    Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary)
+                        }, conquestState = conquest?.state)
+                    Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary, conquest?.state,
+                        onSelectTeam = { teamId -> scope.launch { conquest?.selectTeam(teamId) } })
                     Routes.EXPLORATION_MAP -> ExplorationMapScreen(explorationSummary)
                     Routes.PROFILE -> ProfileScreen(conquestSummary, explorationSummary, UserProgress(userId, 0, 1))
                 }
