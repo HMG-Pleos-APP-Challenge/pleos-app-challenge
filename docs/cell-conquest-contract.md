@@ -7,3 +7,5 @@
 API: choose_conquest_team_v1(p_team), conquest_snapshot_v1(p_partition). sync_exploration_v1 내부 검증이 성공하면 비공개 record_cell_conquest_v1가 하루 기여를 원자적으로 반영한다. 상세 테이블 직접 접근은 금지. 외부 공개 결과는 팀별 점수와 셀 소유 팀뿐이며 다른 사용자의 위치/ID를 노출하지 않는다. 행 잠금과 주간 advisory lock으로 동시 기여를 직렬화한다.
 
 원격 적용: Supabase SQL Editor에서 conquest-upgrade.sql을 한 번 실행. 이미 설치된 migration 001~003을 재실행하지 않는다. 새 설치는 prepare_supabase_editor.py로 생성하는 전체 schema를 사용한다. 테스트·실제 경쟁은 partition으로 분리된다.
+
+담당 분리 후 상태: 점령 서버 배포는 보류. 현재 route는 공동 작업자의 기존 ConquestMapScreen을 유지한다. CellConquestScreen과 conquest-upgrade.sql은 전달용 구현이며, 최 담당이 규칙 검토·서버 적용 후 route에 연결한다. 탐험/프로필 API는 이 추가 SQL 없이도 동작한다. 실제 원격 점령은 검증 완료로 표시하지 않는다.
