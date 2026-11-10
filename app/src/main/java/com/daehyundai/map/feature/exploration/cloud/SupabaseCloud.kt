@@ -15,8 +15,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Tokens are encrypted with an app-owned Android Keystore key; never logged or put in BuildConfig. */
-private class SessionVault(context:Context) {
-    private val prefs=context.getSharedPreferences("cloud-session-${BuildConfig.SUPABASE_URL.hashCode()}",Context.MODE_PRIVATE)
+private class SessionVault(context:Context,namespace:String="") {
+    private val prefs=context.getSharedPreferences("cloud-session-${BuildConfig.SUPABASE_URL.hashCode()}"+if(namespace.isEmpty()) "" else "-${namespace.hashCode()}",Context.MODE_PRIVATE)
     private fun key():SecretKey {
         val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         return (store.getKey("exploration-auth",null) as? SecretKey) ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore").apply {
@@ -37,8 +37,8 @@ private class SessionVault(context:Context) {
     }
 }
 
-class SupabaseCloud(context:Context):ExplorationCloud {
-    private val vault=SessionVault(context)
+class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud {
+    private val vault=SessionVault(context,sessionNamespace)
     private val endpoint=BuildConfig.SUPABASE_URL.trimEnd('/')
     private val key=BuildConfig.SUPABASE_PUBLISHABLE_KEY
     private fun request(path:String,body:JSONObject,token:String?=null):String {
