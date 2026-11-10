@@ -150,7 +150,7 @@ private object DetailPages {
                                     revision++
                                 }
                             },explorationPreview={ExplorationMapPreview(session)})
-                            Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary)
+                            Routes.CONQUEST_MAP -> com.daehyundai.map.feature.conquest.CellConquestScreen(policy.recordPrefix)
                             Routes.EXPLORATION_MAP -> ExplorationMapScreen(summary,session,{go(DetailPages.REGION)},{go(DetailPages.SOURCES)})
                             DetailPages.REGION -> RegionDetailScreen(session,recording,{requestTracking()},
                                 {ExplorationTracking.stop(context)},{go(DetailPages.CELLS)},{openLandmark(it)},
