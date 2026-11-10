@@ -67,6 +67,8 @@ class LocalConquestFeature(
         return true
     }
 
+    @Synchronized fun teamOf(userId: String): String? = ledger.teamOf(userId)
+
     @Synchronized fun accept(event: RoadVisited): ContributionResult {
         val now = now()
         val candidate = restore(record).first
