@@ -54,6 +54,7 @@ private object DetailPages {
 
 @Composable private fun PrototypeApp(userId:String) {
     val context=LocalContext.current
+    val vehicleCapability by com.daehyundai.map.feature.exploration.tracking.VehicleSafety.capability.collectAsState()
     val vehicleState by com.daehyundai.map.feature.exploration.tracking.VehicleSafety.state.collectAsState()
     DisposableEffect(context) {
         val release=com.daehyundai.map.feature.exploration.tracking.VehicleSafety.acquire(context)
@@ -100,7 +101,7 @@ private object DetailPages {
         }
         permissionLauncher.launch(permissions.toTypedArray())
     }
-    LaunchedEffect(userId) { if(automatic) requestTracking() }
+    LaunchedEffect(userId,vehicleCapability) { if(automatic && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE) requestTracking() }
     val scope=rememberCoroutineScope()
     val source=remember { MockLocationSource(userId) }
     val detector=remember { MockVisitDetector() }
@@ -138,7 +139,9 @@ private object DetailPages {
                         verticalArrangement=Arrangement.spacedBy(16.dp)) {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
-                        if(vehicleState!=com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.UNRESTRICTED) {
+                        val emulatorWithoutVehicleApi=developerEnabled && (Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.UNAVAILABLE
+                        if(emulatorWithoutVehicleApi) Text("에뮬레이터 수동 테스트 모드 · 차량 상태 API 미지원, 자동 주행 판정 안 함")
+                        if(vehicleState!=com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.UNRESTRICTED && !emulatorWithoutVehicleApi) {
                             Text(if(vehicleState==com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.RESTRICTED)
                                 "운행 중에는 탐험을 자동으로 기록해요. 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
                             if(recording) OutlinedButton(onClick={ExplorationTracking.stop(context)}) { Text("기록 중지") }
@@ -164,7 +167,7 @@ private object DetailPages {
                                 {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)},automatic,{ enabled ->
                                     automatic=enabled;autoPrefs.edit().putBoolean("automatic",enabled).apply()
                                     if(enabled) requestTracking() else ExplorationTracking.stop(context)
-                                })
+                                },automaticSupported=vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE)
                                 AccountSettings(userId,canRestoreAccount(recording,session?.hasLocalAchievements ?: true)) { session?.syncCloud() }
                             }
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,

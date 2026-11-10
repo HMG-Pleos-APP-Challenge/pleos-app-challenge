@@ -8,3 +8,5 @@ AAOS CarUxRestrictionsManager로 차량이 정한 운전자 조작 제한을 구
 
 공식 근거: https://source.android.com/docs/automotive/driver_distraction/consume
 https://developer.android.com/reference/android/car/Car
+
+실제 Pleos_Connect_2_1_0(emulator-5554)에는 android.car 공유 라이브러리가 없어 optional 선언으로 설치한다. 해당 이미지에서는 자동 주행 판정은 미지원이며 개발 빌드+에뮬레이터에서만 수동 테스트 화면을 허용한다. 실차·배포 빌드의 미확인 상태는 계속 잠근다. 지원 차량에서의 실제 상태 전환은 미검증이다. 차량 API를 GPS 속도 추정으로 대체하지 않는다.
