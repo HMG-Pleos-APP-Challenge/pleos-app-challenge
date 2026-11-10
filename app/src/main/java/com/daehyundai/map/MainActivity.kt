@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
                 Text("실주행 사용 불가 · 위치 SDK/주차 판정 미연동 · 실제 멀티플레이 아님")
                 HorizontalDivider()
                 (conquestLoadError ?: conquest?.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (route != Routes.CONQUEST_MAP && conquest?.demoLabel != null) Text("남양읍 시연 기록")
                 when (route) {
                     Routes.HOME -> HomeScreen(conquestSummary, explorationSummary,
                         onNavigate = { route = it }, onReplay = {
@@ -70,9 +71,13 @@ class MainActivity : ComponentActivity() {
                             }
                         }, conquestState = conquest?.state)
                     Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary, conquest?.state,
-                        onSelectTeam = { teamId -> scope.launch { conquest?.selectTeam(teamId) } })
+                        onSelectTeam = { teamId -> scope.launch { conquest?.selectTeam(teamId) } },
+                        session = conquest)
                     Routes.EXPLORATION_MAP -> ExplorationMapScreen(explorationSummary)
-                    Routes.PROFILE -> ProfileScreen(conquestSummary, explorationSummary, UserProgress(userId, 0, 1))
+                    Routes.PROFILE -> {
+                        ProfileScreen(conquestSummary, explorationSummary, UserProgress(userId, 0, 1))
+                        if (conquest?.demoLabel != null) Text("내 팀 점령 구간 ${conquestSummary.ownedRoadCount}개")
+                    }
                 }
                 if (route != Routes.HOME) OutlinedButton(onClick = { route = Routes.HOME }) { Text("홈으로") }
             }

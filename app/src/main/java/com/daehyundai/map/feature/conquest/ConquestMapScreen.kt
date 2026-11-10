@@ -1,6 +1,7 @@
 package com.daehyundai.map.feature.conquest
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,11 +13,12 @@ import androidx.compose.ui.unit.dp
 import com.daehyundai.map.core.model.ConquestSummary
 import com.daehyundai.map.feature.conquest.domain.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.*
 
 @Composable fun ConquestMapScreen(summary: ConquestSummary, state: ConquestViewState? = null,
-    onSelectTeam: ((String) -> Unit)? = null) {
+    onSelectTeam: ((String) -> Unit)? = null, session: ConquestSession? = null) {
     val context = LocalContext.current.applicationContext
     var baseCatalog by remember { mutableStateOf<ConquestCatalog?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
@@ -34,6 +36,7 @@ import kotlin.math.*
     val current = state?.summary ?: summary
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     Text("남양성지로 · 테스트 도로 3구간 / 방향별 6구간")
+    if (session?.demoEnabled == true && state != null) ConquestDemoControls(session)
     catalog?.let { ConquestRoadMap(it, state?.owners.orEmpty(), state?.teamIds.orEmpty()) }
     if (loadFailed) Text("도로 데이터를 불러오지 못했습니다.")
     if (state == null) {
@@ -56,6 +59,26 @@ import kotlin.math.*
         style = MaterialTheme.typography.labelSmall)
 }
 
+@Composable private fun ConquestDemoControls(session: ConquestSession) {
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("남양읍 주행 시연", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DemoRoute.entries.forEach { route ->
+                OutlinedButton(onClick = { scope.launch { session.replayDemo(route) } },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) { Text(route.label) }
+            }
+        }
+        session.demoLabel?.let { label ->
+            Text("$label · 시연 기록", style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = { scope.launch { session.settleDemo() } }, enabled = !session.demoSettled) {
+                Text(if (session.demoSettled) "낮 12시 정산 완료" else "낮 12시 정산")
+            }
+            TextButton(onClick = { scope.launch { session.exitDemo() } }) { Text("시연 종료") }
+        }
+    }
+}
+
 private fun teamColor(teamId: String?, teams: List<String>): Color {
     val colors = listOf(Color(0xFFEF786F), Color(0xFF6FB5F3), Color(0xFF9DE4A7), Color(0xFFF2CD6D),
         Color(0xFFBF9BEB), Color(0xFF69D4D4))
@@ -69,7 +92,8 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
     val xScale = cos(Math.toRadians(origin.latitude))
     val minX = points.minOf { it.longitude * xScale }; val maxX = points.maxOf { it.longitude * xScale }
     val minY = points.minOf { it.latitude }; val maxY = points.maxOf { it.latitude }
-    Canvas(Modifier.fillMaxWidth().height(240.dp).padding(16.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(200.dp)
+        .background(Color(0xFF192326), MaterialTheme.shapes.medium).padding(20.dp)) {
         val rangeX = max(maxX - minX, .00001); val rangeY = max(maxY - minY, .00001)
         val scale = min(size.width / rangeX, size.height / rangeY)
         val left = (size.width - rangeX * scale) / 2; val top = (size.height - rangeY * scale) / 2
@@ -82,14 +106,14 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
                 val delta = to - from
                 val length = delta.getDistance()
                 if (length > 0) {
-                    val normal = Offset(-delta.y / length, delta.x / length) * 4.dp.toPx()
-                    drawLine(color, from + normal, to + normal, strokeWidth = 3.dp.toPx())
+                    val normal = Offset(-delta.y / length, delta.x / length) * 6.dp.toPx()
+                    drawLine(color, from + normal, to + normal, strokeWidth = 4.dp.toPx())
                     if (index == (road.points.size - 2) / 2) {
                         val direction = delta / length
                         val middle = (from + to) / 2f + normal
-                        val wing = Offset(-direction.y, direction.x) * 3.dp.toPx()
-                        drawLine(color, middle, middle - direction * 7.dp.toPx() + wing, 2.dp.toPx())
-                        drawLine(color, middle, middle - direction * 7.dp.toPx() - wing, 2.dp.toPx())
+                        val wing = Offset(-direction.y, direction.x) * 4.dp.toPx()
+                        drawLine(color, middle, middle - direction * 9.dp.toPx() + wing, 3.dp.toPx())
+                        drawLine(color, middle, middle - direction * 9.dp.toPx() - wing, 3.dp.toPx())
                     }
                 }
             }
