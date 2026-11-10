@@ -33,49 +33,125 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     .withZone(ZoneId.of("Asia/Seoul")).format(Instant.ofEpochMilli(timestamp)) + " KST"
 
 @Composable fun ExplorationMapScreen(summary:ExplorationSummary,session:ExplorationSession?,onRegion:()->Unit,onSources:()->Unit) {
-    Text("지역을 선택해 탐험을 이어가세요.",style=MaterialTheme.typography.titleMedium)
-    Card(Modifier.fillMaxWidth().clickable(onClick=onRegion)) {
-        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            ExplorationMapPreview(session,height=280,showDetails=false)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                Column { Text("남양읍",style=MaterialTheme.typography.headlineSmall);Text("경기도 화성시") }
-                TextButton(onClick=onRegion) { Text("지역 열기 →") }
+    Text("익숙한 길에서 시작하는 새로운 탐험",style=MaterialTheme.typography.titleLarge)
+    Text("나의 발자취가 쌓인 지역을 확인해 보세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        @Composable fun MapCard(modifier:Modifier) {
+            Card(onClick=onRegion,modifier=modifier,colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                            Text("경기도 화성시",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("남양읍",style=MaterialTheme.typography.headlineMedium)
+                        }
+                        Surface(color=MaterialTheme.colorScheme.secondaryContainer,shape=androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
+                            Text(if(summary.discoveredRegionCount>0) "발견한 지역" else "첫 발견을 기다려요",Modifier.padding(12.dp),style=MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                    ExplorationMapPreview(session,height=380,showDetails=true)
+                    ExplorationLegend()
+                    Text("지역 자세히 보기 →",color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.titleMedium)
+                }
             }
-            Text(if(summary.discoveredRegionCount>0) "발견한 지역 · 탐험률 ${explorationRate(summary)}" else "아직 발견하지 않은 지역")
+        }
+        @Composable fun Overview(modifier:Modifier) {
+            Column(modifier,verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=androidx.compose.foundation.shape.RoundedCornerShape(20.dp)) {
+                    Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        Text("나의 남양읍 탐험",style=MaterialTheme.typography.titleMedium)
+                        Text(explorationRate(summary),style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.primary)
+                        LinearProgressIndicator(progress={if(summary.totalExplorableUnitCount>0) (summary.exploredUnitCount.toFloat()/summary.totalExplorableUnitCount).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                        Text("탐험한 구역 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}",style=MaterialTheme.typography.bodyLarge)
+                        Text("수집한 도로 데이터를 기준으로 계산해요.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Text("지나온 길은 기록으로, 새로운 발견은 음성으로.",style=MaterialTheme.typography.titleMedium)
+                Text("기록은 지역 상세에서 시작할 수 있어요. 지도와 도감은 주차 후 편하게 확인해 주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick=onRegion,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("남양읍 탐험 열기") }
+            }
+        }
+        if(maxWidth>=720.dp) {
+            Row(horizontalArrangement=Arrangement.spacedBy(20.dp)) { MapCard(Modifier.weight(1.6f)); Overview(Modifier.weight(1f)) }
+        } else {
+            Column(verticalArrangement=Arrangement.spacedBy(20.dp)) { MapCard(Modifier.fillMaxWidth()); Overview(Modifier.fillMaxWidth()) }
         }
     }
-    Text("현재는 남양읍을 탐험할 수 있어요.")
     MapAttribution(onSources)
 }
 
 @Composable fun RegionDetailScreen(session:ExplorationSession?,recording:Boolean,onStart:()->Unit,onStop:()->Unit,
     onCells:()->Unit,onLandmark:(String)->Unit,onSources:()->Unit,permissionMessage:String="",onCell:(CellIndex)->Unit={}) {
-    if(session==null) { Text("지역 기록을 불러오는 중이에요.");return }
+    if(session==null) { Text("탐험 기록을 불러오고 있어요.");return }
     val summary=session.summary
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(20.dp)) {
-        Card(Modifier.weight(1.6f)) { ExplorationMapPreview(session,height=320,showDetails=true,onLandmark=onLandmark,onCell=onCell) }
-        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Text(if(summary.discoveredRegionCount>0) "남양읍 도감 열림" else "남양읍 도감 미발견",style=MaterialTheme.typography.titleLarge)
-            Text("탐험률 ${explorationRate(summary)}",style=MaterialTheme.typography.headlineMedium)
-            Text("해금한 도로 셀 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}개")
-            if(recording) {
-                Text("탐험 기록 중 · 화면 밖에서도 계속돼요.")
-                OutlinedButton(onClick=onStop,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("기록 중지") }
-            } else Button(onClick=onStart,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("탐험 기록 시작") }
-            Text("새로운 해금은 음성으로 알려드려요.")
-            if(permissionMessage.isNotEmpty()) Text(permissionMessage,color=MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick=onCells,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("세부 탐험 보기 →") }
+    Surface(color=if(recording) Color(0xFF203B36) else MaterialTheme.colorScheme.surfaceVariant,
+        shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(20.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+            Text(if(recording) "●" else "○",color=MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Text(if(recording) "탐험을 기록하고 있어요" else "탐험 기록이 꺼져 있어요",style=MaterialTheme.typography.titleMedium)
+                Text(if(recording) "화면을 닫아도 기록은 계속돼요. 새 발견은 음성으로 안내해요." else "시작 버튼을 누르면 위치 권한을 확인하고 기록을 시작해요.",
+                    color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        @Composable fun RegionMap(modifier:Modifier) {
+            Card(modifier,colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    ExplorationMapPreview(session,height=420,showDetails=true,onLandmark=onLandmark,onCell=onCell)
+                    ExplorationLegend()
+                    Text("구역이나 명소를 선택하면 상세 기록을 볼 수 있어요.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        @Composable fun RegionProgress(modifier:Modifier) {
+            Column(modifier,verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                Text(if(summary.discoveredRegionCount>0) "나의 남양읍 기록" else "남양읍의 첫 발견을 향해",style=MaterialTheme.typography.titleLarge)
+                Text(explorationRate(summary),style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.primary)
+                Text("탐험한 구역 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}")
+                if(recording) {
+                    OutlinedButton(onClick=onStop,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("탐험 기록 중지") }
+                } else {
+                    Button(onClick=onStart,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("탐험 기록 시작") }
+                }
+                if(permissionMessage.isNotEmpty()) Text(permissionMessage,color=MaterialTheme.colorScheme.error)
+                OutlinedButton(onClick=onCells,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("탐험한 구역 보기 →") }
+                Text("상세 기록은 주차 후 확인해 주세요.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if(maxWidth>=720.dp) {
+            Row(horizontalArrangement=Arrangement.spacedBy(20.dp)) { RegionMap(Modifier.weight(1.6f)); RegionProgress(Modifier.weight(1f)) }
+        } else {
+            Column(verticalArrangement=Arrangement.spacedBy(20.dp)) { RegionProgress(Modifier.fillMaxWidth()); RegionMap(Modifier.fillMaxWidth()) }
         }
     }
     session.landmarkSummary?.let { collection ->
-        Text("명소 도감 ${collection.unlockedCount} / ${collection.totalCount}",style=MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+            Text("발견할 명소",style=MaterialTheme.typography.titleLarge)
+            Text("${collection.unlockedCount} / ${collection.totalCount} 수집",color=MaterialTheme.colorScheme.primary)
+        }
         collection.cards.forEach { card ->
-            ListItem(headlineContent={ Text(card.name) },supportingContent={
-                Text(if(card.unlockedUtcMs!=null) "수집 완료" else "아직 수집하지 않은 명소")
-            },trailingContent={ Text("상세 →") },modifier=Modifier.clickable { onLandmark(card.id) })
+            Card(onClick={onLandmark(card.id)},modifier=Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+                Row(Modifier.padding(20.dp),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(if(card.unlockedUtcMs!=null) "★" else "◇",color=if(card.unlockedUtcMs!=null) Color(0xFFFFD56F) else Color(0xFFC3A9F0),style=MaterialTheme.typography.headlineSmall)
+                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        Text(card.name,style=MaterialTheme.typography.titleMedium)
+                        Text(if(card.unlockedUtcMs!=null) "나의 도감에 보관 중" else "주변에서 머무르며 발견해 보세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("상세 →",color=MaterialTheme.colorScheme.primary)
+                }
+            }
         }
     }
     MapAttribution(onSources)
+}
+
+@Composable private fun ExplorationLegend() {
+    Row(horizontalArrangement=Arrangement.spacedBy(20.dp)) {
+        Text("■ 탐험한 구역",color=Color(0xFF62E4AF),style=MaterialTheme.typography.labelLarge)
+        Text("□ 미탐험 구역",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelLarge)
+        Text("● 명소",color=Color(0xFFC3A9F0),style=MaterialTheme.typography.labelLarge)
+    }
 }
 
 @Composable fun CellsScreen(session:ExplorationSession?,onCell:(CellIndex)->Unit) {
