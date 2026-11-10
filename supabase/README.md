@@ -3,7 +3,9 @@
 ## Apply to qcbesfuohbvprpkwmlqu
 
 1. Enable Anonymous Sign-Ins in Authentication. No administrator/secret key belongs in Android.
-2. For a fresh project, open setup-first-install.sql locally, copy its full contents into SQL Editor, then Run. This installs both migrations and the catalog in one transaction. Do not rerun this first-install bundle on an already configured DB. For later changes use ordered migrations.
+2. For a fresh project, run the files in `sql-editor/` separately, in filename order: `00-schema.sql`, then `01-catalog.sql` through `05-catalog.sql`. Replace the query contents each time; do not append or concatenate. Each file is at most 400000 UTF-8 bytes. `00-schema.sql` runs once; catalog chunks use ON CONFLICT DO NOTHING and can be retried. The former combined setup-first-install.sql is retired because SQL Editor rejected its size. If only some chunks succeed, retry from the failed catalog chunk without resetting any tables.
+   Final SQL check: `select kind, count(*) from public.exploration_targets group by kind order by kind;` must return cell=1579, landmark=1, region=1.
+   Regenerate with `python tools/export_supabase_catalog.py` then `python tools/prepare_supabase_editor.py`.
 3. Add to git-ignored local.properties:
    supabase.url=https://qcbesfuohbvprpkwmlqu.supabase.co
    supabase.publishableKey=<publishable key or legacy anon key>

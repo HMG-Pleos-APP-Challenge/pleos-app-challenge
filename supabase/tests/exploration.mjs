@@ -1,6 +1,6 @@
 import {PGlite} from '@electric-sql/pglite';
 import {postgis} from '@electric-sql/pglite-postgis';
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const db=new PGlite({extensions:{postgis}});
 await db.waitReady;
@@ -10,7 +10,7 @@ create function auth.uid() returns uuid language sql stable as $$ select nullif(
 grant usage on schema auth to authenticated,anon;
 grant execute on function auth.uid() to authenticated,anon;`);
 const root=new URL('../../',import.meta.url); 
-for(const file of ['supabase/migrations/202611100001_exploration.sql','supabase/migrations/202611100002_conquest_contract.sql','supabase/seed.sql']) {
+for(const file of (await readdir(new URL('supabase/sql-editor/',root))).filter(f=>f.endsWith('.sql')).sort().map(f=>'supabase/sql-editor/'+f)) {
  await db.exec(await readFile(new URL(file,root),'utf8')); console.log('Applied '+file);
 }
 assert.equal((await db.query('select count(*)::int n from public.exploration_targets')).rows[0].n,1581);
