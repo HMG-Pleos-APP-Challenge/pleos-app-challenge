@@ -163,12 +163,13 @@ internal fun openExplorationSession(context: Context, userId: String,
     val store = FileDiscoveryStore(File(context.filesDir, "exploration/$prefix-discoveries.bin"),
         boundary.datasetVersion, source)
     val catalog = context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
+    migrateGrid500(File(context.filesDir,"exploration"),catalog)
     val cells = LocalCellExploration(boundary, catalog, source,
         FileCellUnlockStore(File(context.filesDir, "exploration/$prefix-cells.bin"), catalog.version, source))
     val landmarks = context.assets.open("exploration/namyang.landmarks").reader().use(LandmarkCatalogReader::read)
     val collection = LocalLandmarkCollection(boundary,landmarks,source,
         FileLandmarkUnlockStore(File(context.filesDir,"exploration/$prefix-landmarks.bin"),landmarks.version,source))
-    val rewards=ExplorationRewards(FileProgressRepository(File(context.filesDir,"progress/$prefix-xp.bin")),prefix)
+    val rewards=ExplorationRewards(FileProgressRepository(File(context.filesDir,"progress/$prefix-grid500-xp.bin")),prefix)
     return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source,rewards,
-        if(source == LocationSourceType.PLEOS) com.daehyundai.map.feature.exploration.cloud.CloudSync(context,userId,prefix) else null)
+        if(source == LocationSourceType.PLEOS) com.daehyundai.map.feature.exploration.cloud.CloudSync(context,userId,prefix,catalog.version) else null)
 }

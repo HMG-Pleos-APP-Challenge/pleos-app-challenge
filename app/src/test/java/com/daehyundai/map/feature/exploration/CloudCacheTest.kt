@@ -40,6 +40,15 @@ class CloudCacheTest {
             assertEquals(1,it.count("u","pleos-emulator"));assertEquals(1,it.count("other","pleos"))
         }
     }
+    @Test fun oldGridResponseMustNotAcknowledgeQueuedLocations() {
+        CloudCache(context).withCache {
+            it.enqueue("u","pleos",sample("a"))
+            assertThrows(com.daehyundai.map.feature.exploration.cloud.CatalogVersionMismatch::class.java) {
+                CloudCache.parse(empty,com.daehyundai.map.feature.exploration.data.GRID500_VERSION)
+            }
+            assertEquals(1,it.count("u","pleos"))
+        }
+    }
     @Test fun malformedServerResponseCannotBeAcknowledgedByParser() {
         CloudCache(context).withCache {
             it.enqueue("u","pleos",sample("a"))

@@ -22,9 +22,16 @@ expected={'00-schema.sql'}
 for number,group in enumerate(groups,1):
  name=f'{number:02}-catalog.sql';expected.add(name)
  text=prefix+',\n'.join(group)+suffix
+ if number==len(groups):text=text.replace('commit;','select public.activate_grid500_v2();\ncommit;')
  assert len(text.encode())<=400000
  (out/name).write_text(text,encoding='utf-8',newline='\n')
 stale={p.name for p in out.glob('*.sql')}-expected
-if stale:raise ValueError(f'Obsolete generated files need review: {sorted(stale)}')
-assert sum(map(len,groups))==1581
+for name in stale:(out/name).write_text('-- Retired catalog batch; no statements.\n',encoding='utf-8',newline='\n')
+assert sum(map(len,groups))==len(rows)
 for p in sorted(out.glob('*.sql')):print(p.name,p.stat().st_size)
+
+upgrade=ROOT/'supabase/grid500-upgrade';upgrade.mkdir(exist_ok=True)
+(upgrade/'00-upgrade.sql').write_text('begin;\n'+(ROOT/'supabase/migrations/202611100003_grid500.sql').read_text(encoding='utf-8')+'\ncommit;\n',encoding='utf-8',newline='\n')
+for number in range(1,len(groups)+1):
+ name=f'{number:02}-catalog.sql'
+ (upgrade/name).write_bytes((out/name).read_bytes())

@@ -1,3 +1,3 @@
--- Replaced: this combined catalog exceeded the hosted SQL Editor query size limit.
--- Run sql-editor/00-schema.sql, then 01-catalog.sql through 05-catalog.sql separately.
--- See README.md. Do not concatenate the scripts in SQL Editor.
+-- Retired combined script (SQL Editor size limit).
+-- Fresh install: sql-editor/00-schema.sql, 01-catalog.sql, 02-catalog.sql separately.
+-- Existing project: grid500-upgrade/00-upgrade.sql, 01-catalog.sql, 02-catalog.sql separately.

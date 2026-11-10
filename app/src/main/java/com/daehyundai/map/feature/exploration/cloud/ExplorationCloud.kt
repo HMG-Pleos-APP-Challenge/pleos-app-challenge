@@ -7,6 +7,8 @@ interface ExplorationCloud {
     fun synchronize(partition: String, samples: String): String
 }
 
+class CatalogVersionMismatch:IllegalStateException("서버 지도 버전 업데이트 필요")
+
 data class CloudGrant(val kind: String, val targetId: String, val timestamp: Long)
 
 /** Server claims are distinct from locally detected, provisional achievements. */

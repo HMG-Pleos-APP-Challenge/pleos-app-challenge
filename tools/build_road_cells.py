@@ -11,10 +11,10 @@ from shapely.geometry import Polygon, MultiPolygon, LineString, box, mapping, sh
 from shapely.ops import transform
 
 RADIUS = 6371008.8
-ORIGIN_LON, ORIGIN_LAT, SIZE = 126.8, 37.2, 100
+ORIGIN_LON, ORIGIN_LAT, SIZE = 126.8, 37.2, 500
 XSCALE = math.radians(1) * RADIUS * math.cos(math.radians(ORIGIN_LAT))
 YSCALE = math.radians(1) * RADIUS
-VERSION = 'osm-geofabrik-20261108-namyang-grid100-v1'
+VERSION = 'osm-geofabrik-20261108-namyang-grid500-v2'
 ALLOWED = {'motorway','motorway_link','trunk','trunk_link','primary','primary_link',
            'secondary','secondary_link','tertiary','tertiary_link','unclassified','residential'}
 RESTRICTED = {'no','private','agricultural','forestry','destination','delivery','customers','permit'}

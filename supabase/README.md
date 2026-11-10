@@ -3,9 +3,9 @@
 ## Apply to qcbesfuohbvprpkwmlqu
 
 1. Enable Anonymous Sign-Ins in Authentication. No administrator/secret key belongs in Android.
-2. For a fresh project, run the files in `sql-editor/` separately, in filename order: `00-schema.sql`, then `01-catalog.sql` through `05-catalog.sql`. Replace the query contents each time; do not append or concatenate. Each file is at most 400000 UTF-8 bytes. `00-schema.sql` runs once; catalog chunks use ON CONFLICT DO NOTHING and can be retried. The former combined setup-first-install.sql is retired because SQL Editor rejected its size. If only some chunks succeed, retry from the failed catalog chunk without resetting any tables.
-   Final SQL check: `select kind, count(*) from public.exploration_targets group by kind order by kind;` must return cell=1579, landmark=1, region=1.
-   Regenerate with `python tools/export_supabase_catalog.py` then `python tools/prepare_supabase_editor.py`.
+2. Fresh projects: run `sql-editor/00-schema.sql`, `01-catalog.sql`, `02-catalog.sql` separately in order. Replace the editor content each time. The final catalog batch activates grid500 after checking all 243 cells exist. The former combined setup-first-install.sql is retired due to SQL Editor size limits.
+   Existing installed projects: run `grid500-upgrade/00-upgrade.sql`, then `01-catalog.sql`, then `02-catalog.sql`. Do not rerun the fresh-install schema. Each upgrade is retryable; existing targets/grants remain preserved. The final step groups old grants by floor(col/5), floor(row/5), retains the earliest achievement, awards 10 XP per merged cell and switches the active catalog atomically.
+   Regenerate with `python tools/export_supabase_catalog.py`, then `python tools/prepare_supabase_editor.py`; copy the migration 003 and the generated catalog batches into the existing-project upgrade bundle when releasing a new catalog.
 3. Add to git-ignored local.properties:
    supabase.url=https://qcbesfuohbvprpkwmlqu.supabase.co
    supabase.publishableKey=<publishable key or legacy anon key>
@@ -27,7 +27,7 @@
 
 ExplorationCloud is a provider-independent sync interface; replace SupabaseCloud with a future HTTP adapter while retaining local caches and RPC payload contract. Plain SQL migrations and deterministic seed support pg_dump/pg_restore into PostgreSQL + PostGIS. Supabase Auth JWT verification/user migration is a separate migration concern.
 
-PostGIS uses SRID 0 local metres with exactly the app projection (origin 126.8,37.2). Never interpret these shapes as EPSG:4326. Catalog source attribution and licences remain in app asset documentation; preserve them when exporting/sharing the DB. Export seed using python tools/export_supabase_catalog.py; 1579 cells + 1 region + 1 landmark.
+PostGIS uses SRID 0 local metres with exactly the app projection (origin 126.8,37.2). Never interpret these shapes as EPSG:4326. Catalog source attribution and licences remain in app asset documentation; preserve them when exporting/sharing the DB. Export seed using python tools/export_supabase_catalog.py; 243 cells (500m) + 1 region + 1 landmark.
 
 ## Collaborator handoff
 
@@ -39,7 +39,15 @@ Security: all user tables have RLS; only own profile/grants are readable. Grant/
 
 ## Verification
 
-Android: JDK17, gradlew testDebugUnitTest assembleDebug lintDebug. 82 tests passed including 4 Android 28 SQLite outbox tests.
-Backend: cd supabase && npm ci && npm test (Node 22+). Isolated WASM PostgreSQL/PostGIS tests stub Supabase auth.uid()/roles locally, never touch cloud data. Tests exercise 1581 catalog targets, spatial grant, XP idempotency after lost response, real/emulator isolation, null-accuracy rejection, direct-write denial, RLS cross-user privacy and unauthenticated RPC denial. Hosted GoTrue integration is separate and requires Anonymous Sign-Ins enabled.
+Android: JDK17, gradlew testDebugUnitTest assembleDebug lintDebug. 86 tests passed including 5 Android 28 SQLite outbox tests and 3 grid migration tests.
+Backend: cd supabase && npm ci && npm test (Node 22+). Isolated WASM PostgreSQL/PostGIS tests stub Supabase auth.uid()/roles locally, never touch cloud data. Tests exercise 245 active catalog targets, spatial grant, XP idempotency after lost response, real/emulator isolation, null-accuracy rejection, direct-write denial, RLS cross-user privacy and unauthenticated RPC denial. Hosted GoTrue integration is separate and requires Anonymous Sign-Ins enabled.
 
 2026-11-10 hosted verification: anonymous signup succeeded; sync_exploration_v1 with an empty emulator batch returned XP=0 and no grants; exact catalog counts were region=1, cell=1579, landmark=1; explorer profile was created and read back. The configured debug APK was installed with adb install -r and MainActivity launched on emulator-5554/user 10 without AndroidRuntime errors in the checked log. Emulator GPS was not changed and tracking was not automatically started. End-to-end app-originated upload remains for manual Start exploration verification; API checks do not imply this UI flow has been exercised.
+
+## 500m grid update (2026-11-10)
+
+- Same 643 source ways / 612 clipped road paths, new grid500-v2 catalog: 243 eligible cells instead of 1579. One cell is about 0.41% of Namyang progress. Region/road-distance/accuracy/3-second dwell/8m movement conditions remain. A cell unlock does not mean every road in that square was driven.
+- All 1579 old cell indices map to an eligible 500m cell (checked against both catalogs). Local startup migrates all three partitions before reading the new catalog, keeps `*-cells-grid100-v1.backup.bin`, merges by user + new cell and keeps the earliest timestamp. Unknown/corrupt versions stop without replacing the file.
+- Local XP uses a new `*-grid500-xp.bin` ledger rebuilt from merged achievements; old XP files remain. Counts/XP can decrease when old cells merge. Server XP similarly counts only the active catalog. Existing 100m grants stay stored as historical records and are excluded from active totals.
+- RPC includes catalog_version. A 500m app will not acknowledge queued samples using a 100m server response or restore an old-version cached snapshot. This prevents mixed denominators while remote SQL is pending.
+- Local validation: Android tests 86/86, build/lint passed; PostGIS catalog, spatial unlock, RLS and grant merge/idempotency passed. Hosted RPC now reports grid500-v2 and exact count 243 after the user applied the three upgrade files. Installed APK startup migrated the device emulator cache from 16 old cells to 9 merged cells and created the original-version backup. GPS was not changed; app-originated upload after manual tracking start is still a separate check.

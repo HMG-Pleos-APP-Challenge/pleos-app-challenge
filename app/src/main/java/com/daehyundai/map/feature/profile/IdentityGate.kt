@@ -20,6 +20,7 @@ import kotlinx.coroutines.*
                 val boundary=context.assets.open("exploration/namyang.boundary").reader().use(RegionBoundaryReader::read)
                 val roads=context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
                 val landmarks=context.assets.open("exploration/namyang.landmarks").reader().use(LandmarkCatalogReader::read)
+                com.daehyundai.map.feature.exploration.data.migrateGrid500(File(context.filesDir,"exploration"),roads)
                 migrateLegacyExploration(File(context.filesDir,"exploration"),boundary,roads,landmarks,id)
                 id
             }

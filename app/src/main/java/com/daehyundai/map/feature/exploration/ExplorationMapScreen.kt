@@ -177,7 +177,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     val point=catalog.grid.unproject(MeterPoint((cell.col+.5)*catalog.grid.sizeMeters,(cell.row+.5)*catalog.grid.sizeMeters))
     ExplorationMapPreview(session,height=320,showDetails=true,focus=point,highlight=cell)
     Text(if(cell in session.unlockedCells) "이 구역은 해금했어요." else "아직 탐험하지 않은 구역이에요.",style=MaterialTheme.typography.titleLarge)
-    Text("도로 위 이동으로 해금하는 약 100m 크기의 탐험 구역이에요.")
+    Text("도로 위 이동으로 해금하는 약 500m × 500m 크기의 탐험 구역이에요.")
     Text("처음 해금하면 10 XP를 얻어요. 같은 구역은 다시 지급하지 않아요.")
 }
 
@@ -211,7 +211,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     if(session==null) { Box(Modifier.fillMaxWidth().height(height.dp)) { Text("지도 불러오는 중…",Modifier.padding(20.dp)) };return }
     val boundary=session.feature.boundary
     val catalog=session.feature.cellExploration?.catalog
-    val grid=catalog?.grid ?: LocalGrid(126.8,37.2,100.0)
+    val grid=catalog?.grid ?: LocalGrid(126.8,37.2,500.0)
     val points=boundary.polygons.flatMap { it.rings.flatten() }.map(grid::project)
     val center=focus?.let(grid::project)
     val minX=center?.let { it.x-500 } ?: points.minOf { it.x }

@@ -24,13 +24,13 @@ for line in lines[4:]:
  elif ',' in line:points.append(project(*line.split(',')))
 region=lines[2]
 add(region,'region',region,lines[1],geom('MULTIPOLYGON('+','.join(polygons)+')'),'null',3000,30000,0,100)
-lines=(ASSETS/'namyang.roadcells').read_text(encoding='utf-8').splitlines();version=lines[1];roads=[]
+lines=(ASSETS/'namyang.roadcells').read_text(encoding='utf-8').splitlines();version=lines[1];size=float(lines[3].split(",")[2]);roads=[]
 for line in lines[4:]:
  v=line.split('|')
  if v[0]=='ROAD':roads.append('('+v[2].replace(',',' ').replace(';',',')+')')
  elif v[0]=='CELL':
-  col,row=int(v[1]),int(v[2]);x,y=col*100,row*100
-  area=f'POLYGON(({x} {y},{x+100} {y},{x+100} {y+100},{x} {y+100},{x} {y}))'
+  col,row=int(v[1]),int(v[2]);x,y=col*size,row*size
+  area=f'POLYGON(({x} {y},{x+size} {y},{x+size} {y+size},{x} {y+size},{x} {y}))'
   road='MULTILINESTRING('+','.join(roads[int(i)] for i in v[3].split(','))+')'
   add(f'{version}:{col}:{row}','cell',region,version,geom(area),geom(road),3000,30000,8,10)
 lines=(ASSETS/'namyang.landmarks').read_text(encoding='utf-8').splitlines()
@@ -38,5 +38,5 @@ for line in lines[3:]:
  if not line:continue
  v=line.split('|');area='extensions.st_buffer('+geom('POINT('+project(v[3],v[2])+')')+','+v[4]+',64)'
  add(v[0],'landmark',region,lines[1],area,'null',int(v[5]),int(v[6]),0,200)
-sql='-- Generated; source attribution remains in bundled asset documentation.\nbegin;\ninsert into public.exploration_targets(id,kind,region_id,dataset_version,area,roads,dwell_ms,max_gap_ms,min_move,xp) values\n'+',\n'.join(rows)+'\non conflict(id) do nothing;\ncommit;\n'
+sql='-- Generated; source attribution remains in bundled asset documentation.\nbegin;\ninsert into public.exploration_targets(id,kind,region_id,dataset_version,area,roads,dwell_ms,max_gap_ms,min_move,xp) values\n'+',\n'.join(rows)+'\non conflict(id) do nothing;\nselect public.activate_grid500_v2();\ncommit;\n'
 out=ROOT/'supabase/seed.sql';out.write_text(sql,encoding='utf-8');print(f'{len(rows)} targets -> {out}')

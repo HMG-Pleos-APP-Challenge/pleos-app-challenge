@@ -45,13 +45,15 @@ class CloudCache(context: Context) : SQLiteOpenHelper(context, "exploration-clou
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
-    fun snapshot(owner:String,partition:String):CloudSnapshot? = readableDatabase.rawQuery(
+    fun snapshot(owner:String,partition:String,expectedVersion:String?=null):CloudSnapshot? = readableDatabase.rawQuery(
         "SELECT payload FROM snapshots WHERE owner=? AND partition=?",arrayOf(owner,partition)).use {
-        if(it.moveToFirst()) parse(it.getString(0)) else null
+        if(it.moveToFirst()) parse(it.getString(0),expectedVersion) else null
     }
     companion object {
-        fun parse(raw:String):CloudSnapshot {
-            val json=JSONObject(raw);val array=json.getJSONArray("grants")
+        fun parse(raw:String,expectedVersion:String?=null):CloudSnapshot {
+            val json=JSONObject(raw)
+            if(expectedVersion!=null && json.optString("catalog_version")!=expectedVersion) throw CatalogVersionMismatch()
+            val array=json.getJSONArray("grants")
             val grants=(0 until array.length()).map { array.getJSONObject(it).let { row ->
                 CloudGrant(row.getString("kind"),row.getString("target_id"),row.getLong("earned_ms")) } }
             return CloudSnapshot(grants,json.getLong("xp"))
