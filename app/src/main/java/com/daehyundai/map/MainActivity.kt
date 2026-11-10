@@ -160,11 +160,13 @@ private object DetailPages {
                             DetailPages.LANDMARK -> LandmarkDetailScreen(session,landmarkId,{go(DetailPages.SOURCES)})
                             Routes.PROFILE -> ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
                                 {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)})
-                            DetailPages.SETTINGS -> PrototypeSettings(recording,developerEnabled,{ExplorationTracking.stop(context)},
+                            DetailPages.SETTINGS -> { PrototypeSettings(recording,developerEnabled,{ExplorationTracking.stop(context)},
                                 {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)},automatic,{ enabled ->
                                     automatic=enabled;autoPrefs.edit().putBoolean("automatic",enabled).apply()
                                     if(enabled) requestTracking() else ExplorationTracking.stop(context)
                                 })
+                                AccountSettings(userId,canRestoreAccount(recording,session?.hasLocalAchievements ?: true)) { session?.syncCloud() }
+                            }
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,
                                 {sdkSelected=it},{scenario -> scope.launch { mockSession?.replay(scenario) }}) else Text("개발자 도구는 개발 빌드에서만 열 수 있어요.")
                             DetailPages.SOURCES -> MapSources()

@@ -29,6 +29,8 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
         private set
     private var confirmedProgress:UserProgress?=null
     private var confirmedSnapshot:com.daehyundai.map.feature.exploration.cloud.CloudSnapshot?=null
+    var hasLocalAchievements by mutableStateOf(false)
+        private set
     var localOnlyCells by mutableIntStateOf(0)
         private set
     suspend fun syncCloud() {
@@ -54,6 +56,7 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
             Triple(feature.getSummary(userId), feature.cellExploration?.unlockedCells(userId) ?: emptySet(),
                 feature.landmarkCollection?.summary(userId))
         }
+        hasLocalAchievements=loaded.first.discoveredRegionCount>0 || loaded.second.isNotEmpty() || (loaded.third?.unlockedCount ?: 0)>0
         if(cloud!=null && com.daehyundai.map.feature.exploration.cloud.SupabaseCloud.configured) {
             if(confirmedSnapshot==null) confirmedSnapshot=cloud.cached()
             val xp=confirmedSnapshot?.xp ?: 0L
