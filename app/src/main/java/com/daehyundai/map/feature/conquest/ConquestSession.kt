@@ -1,6 +1,7 @@
 package com.daehyundai.map.feature.conquest
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import com.daehyundai.map.core.model.*
@@ -17,27 +18,60 @@ data class ConquestViewState(val catalog: ConquestCatalog, val summary: Conquest
 /** One session at the app composition root. Screens receive snapshots, not direct access to storage. */
 class ConquestSession private constructor(private val userId: String, private val catalog: ConquestCatalog,
     private val feature: LocalConquestFeature, private val pipeline: ConquestLocationPipeline,
-    private val teams: List<String>) {
-    var state by mutableStateOf<ConquestViewState?>(null)
+    private val teams: List<String>, val demoEnabled: Boolean) {
+    private var savedState by mutableStateOf<ConquestViewState?>(null)
+    private var demoState by mutableStateOf<ConquestViewState?>(null)
+    val state get() = demoState ?: savedState
+    private var demo: ConquestDemo? = null
+    var demoLabel by mutableStateOf<String?>(null)
+        private set
+    var demoSettled by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
         private set
     private val mutex = Mutex()
 
-    private suspend fun update(action: () -> Unit) = mutex.withLock {
+    private suspend fun change(action: suspend () -> Unit) = mutex.withLock {
         try {
-            val snapshot = withContext(Dispatchers.IO) {
-                action()
-                val summary = feature.getSummary(userId)
-                ConquestViewState(catalog, summary, feature.owners(), teams)
-            }
-            state = snapshot
+            action()
             error = null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             error = "점령 기록을 처리하지 못했습니다. 기존 기록은 유지되며 다시 확인이 필요합니다."
         }
+    }
+
+    private suspend fun update(action: () -> Unit) = change {
+        savedState = withContext(Dispatchers.IO) {
+            action()
+            ConquestViewState(catalog, feature.getSummary(userId), feature.owners(), teams)
+        }
+    }
+
+    suspend fun replayDemo(route: DemoRoute) = change {
+        if (!demoEnabled) return@change
+        val (nextDemo, snapshot) = withContext(Dispatchers.IO) {
+            val next = ConquestDemo(userId, catalog, teams, feature.teamOf(userId) ?: teams.first())
+            next to next.replay(route)
+        }
+        demo = nextDemo
+        demoState = snapshot
+        demoLabel = route.label
+        demoSettled = false
+    }
+
+    suspend fun settleDemo() = change {
+        val current = demo ?: return@change
+        demoState = withContext(Dispatchers.IO) { current.settle() }
+        demoSettled = current.settled
+    }
+
+    suspend fun exitDemo() = change {
+        demo = null
+        demoState = null
+        demoLabel = null
+        demoSettled = false
     }
 
     suspend fun refresh() = update { }
@@ -54,12 +88,13 @@ class ConquestSession private constructor(private val userId: String, private va
             val feature = LocalConquestFeature(teams.toSet(), catalog.roads.map { it.id }.toSet(), catalog.version,
                 LocationSourceType.MOCK, FileConquestStore(File(context.filesDir, "conquest/mock-${catalog.version}.bin")))
             ConquestSession(userId, catalog, feature,
-                ConquestLocationPipeline(feature, catalog, LocationSourceType.MOCK), teams)
+                ConquestLocationPipeline(feature, catalog, LocationSourceType.MOCK), teams,
+                (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
         }
     }
 }
 
-/** App-owned MOCK session; no live location permissions, subscriptions, or demo replay tools are added. */
+/** App-owned MOCK session with an isolated, debug-only demonstration. */
 @Composable fun rememberConquestSession(userId: String): Pair<ConquestSession?, String?> {
     val context = LocalContext.current.applicationContext
     var session by remember(userId) { mutableStateOf<ConquestSession?>(null) }
