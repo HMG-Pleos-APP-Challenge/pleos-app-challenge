@@ -66,6 +66,19 @@ import kotlin.math.*
                     Text("현재 소유 팀: ${detail.ownerTeamId ?: "중립"}")
                     Text("마지막 정산: ${detail.settledUtcMs?.let(::formatSettlement) ?: "첫 정산 전"}")
                     Text("이 방향 내 누적 인정 기여: ${detail.contributionCount}회")
+                    HorizontalDivider()
+                    Text("${detail.dateKst} · KST 오늘 기여", style = MaterialTheme.typography.titleSmall)
+                    Text("오전 00:00–12:00 · ${if (detail.morningAccepted) "인정 완료" else "인정 기록 없음"}")
+                    Text("오후 12:00–24:00 · ${when {
+                        detail.afternoonAccepted -> "인정 완료"
+                        !detail.currentAfternoon -> "아직 시작 전"
+                        else -> "인정 기록 없음"
+                    }}")
+                    Text("같은 방향은 오전·오후 각각 1회만 인정됩니다. 인정 완료된 반일에는 추가 기여가 없습니다.")
+                    if (current.teamId == null) Text("팀 선택 후 통과부터 기여가 인정됩니다.")
+                    if (session?.demoLabel == null && (session?.pendingVisitCount ?: 0) > 0)
+                        Text("미처리 기록 ${session?.pendingVisitCount}건 · 인정 현황은 저장 완료된 기여 기준입니다.")
+
                     Text("완주 기여 인정 후, 소유 결과는 낮 12시 정산에 반영됩니다.")
                 }
             }

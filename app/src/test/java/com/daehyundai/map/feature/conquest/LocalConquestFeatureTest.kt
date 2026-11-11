@@ -19,6 +19,60 @@ class LocalConquestFeatureTest {
     private fun feature(store: ConquestStore, clock: () -> Long, source: LocationSourceType = LocationSourceType.MOCK) =
         LocalConquestFeature(setOf("red", "blue", "green"), setOf("ab", "ba"), "roads-v1", source, store, clock)
 
+    @Test fun dailyDetailsFollowKstNoonMidnightAndPreserveLifetimeCount() {
+        val noon = Instant.parse("2026-11-11T03:00:00Z").toEpochMilli()
+        var now = noon - 1000
+        val store = FileConquestStore(File(folder.root, "daily.bin"))
+        val game = feature(store, { now })
+        game.selectTeam("u", "red")
+        fun event(id: String, road: String = "ab") = RoadVisited(id, "u", road, now, LocationSourceType.MOCK)
+        assertEquals(ContributionResult.ACCEPTED, game.accept(event("am")))
+        assertEquals(ContributionResult.DUPLICATE_HALF_DAY, game.accept(event("am-duplicate")))
+        val morning = game.roadDetails("u").getValue("ab")
+        assertEquals(java.time.LocalDate.parse("2026-11-11"), morning.dateKst)
+        assertTrue(morning.morningAccepted)
+        assertFalse(morning.afternoonAccepted)
+        assertFalse(morning.currentAfternoon)
+        now = noon
+        assertEquals(ContributionResult.ACCEPTED, game.accept(event("pm")))
+        val afternoon = game.roadDetails("u").getValue("ab")
+        assertTrue(afternoon.morningAccepted && afternoon.afternoonAccepted && afternoon.currentAfternoon)
+        assertEquals(2, afternoon.contributionCount)
+        assertFalse(game.roadDetails("u").getValue("ba").afternoonAccepted)
+        assertFalse(game.roadDetails("other").getValue("ab").morningAccepted)
+        now = Instant.parse("2026-11-11T14:59:59.999Z").toEpochMilli()
+        assertTrue(game.roadDetails("u").getValue("ab").afternoonAccepted)
+        now++ // KST midnight, without any new GPS sample.
+        val restarted = feature(store, { now })
+        val nextDay = restarted.roadDetails("u").getValue("ab")
+        assertEquals(java.time.LocalDate.parse("2026-11-12"), nextDay.dateKst)
+        assertFalse(nextDay.morningAccepted || nextDay.afternoonAccepted || nextDay.currentAfternoon)
+        assertEquals(2, nextDay.contributionCount)
+    }
+
+    @Test fun failedWriteAndNoTeamNeverMarkHalfDayAsAccepted() {
+        var now = start + 1000
+        var failWrite = false
+        var saved: ConquestRecord? = null
+        val store = object : ConquestStore {
+            override fun read() = saved
+            override fun write(record: ConquestRecord) {
+                if (failWrite) throw IOException("Unavailable")
+                saved = record
+            }
+        }
+        val game = feature(store, { now })
+        val event = RoadVisited("e", "u", "ab", now, LocationSourceType.MOCK)
+        assertEquals(ContributionResult.NO_TEAM, game.accept(event))
+        assertFalse(game.roadDetails("u").getValue("ab").afternoonAccepted)
+        game.selectTeam("u", "red")
+        now++
+        failWrite = true
+        try { game.accept(event.copy(timestampUtcMs = now)); fail("Expected write failure") } catch (_: IOException) { }
+        assertFalse(game.roadDetails("u").getValue("ab").afternoonAccepted)
+        assertEquals(0, game.roadDetails("u").getValue("ab").contributionCount)
+    }
+
     @Test fun directionDetailsRetainUserCountsAndCompletedNoonAfterRestart() {
         var now = start + 1000
         val store = FileConquestStore(File(folder.root, "details.bin"))
