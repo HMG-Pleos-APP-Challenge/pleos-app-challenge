@@ -34,7 +34,7 @@ class ConquestSession private constructor(private val userId: String, private va
     private suspend fun change(action: suspend () -> Unit) = mutex.withLock {
         try {
             action()
-            error = null
+            error = if (pipeline.pendingCount > 0) "미처리 점령 기록 ${pipeline.pendingCount}건 · 저장 재시도 필요" else null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -75,7 +75,7 @@ class ConquestSession private constructor(private val userId: String, private va
     }
 
     fun resetInput() { pipeline.resetObservations(userId) }
-    suspend fun refresh() = update { }
+    suspend fun refresh() = update { pipeline.retryPending() }
     suspend fun selectTeam(teamId: String) = update {
         check(pipeline.selectTeam(userId, teamId)) { "Team cannot change" }
     }
@@ -98,7 +98,8 @@ class ConquestSession private constructor(private val userId: String, private va
             val feature = LocalConquestFeature(teams.toSet(), catalog.roads.map { it.id }.toSet(), catalog.version,
                 source, FileConquestStore(file))
             ConquestSession(userId, catalog, feature,
-                ConquestLocationPipeline(feature, catalog, source), teams,
+                ConquestLocationPipeline(feature, catalog, source, pendingStore =
+                    FilePendingVisitsStore(File(file.parentFile, "${file.name}.pending"), catalog.version, source, userId)), teams,
                 source==LocationSourceType.MOCK && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,source)
                 .also { sessions[file.canonicalPath]=it }
         } }

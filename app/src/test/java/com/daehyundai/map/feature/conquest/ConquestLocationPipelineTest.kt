@@ -90,4 +90,75 @@ class ConquestLocationPipelineTest {
         assertEquals(ContributionResult.ACCEPTED, pipeline.onSample(samples.last()).single().result)
         assertEquals(1, game.getSummary("u").contributionCount)
     }
+
+    @Test fun durablePendingRecoversWithNoNewSampleAfterFeatureWriteFailure() = runTest {
+        var now = base
+        val folder = java.nio.file.Files.createTempDirectory("conquest-recovery").toFile()
+        try {
+            val store = MemoryStore()
+            fun game() = LocalConquestFeature(setOf("red"), catalog.roads.map { it.id }.toSet(),
+                catalog.version, LocationSourceType.MOCK, store, { now })
+            fun journal() = FilePendingVisitsStore(File(folder, "pending.bin"), catalog.version, LocationSourceType.MOCK, "u")
+            val firstGame = game()
+            val first = ConquestLocationPipeline(firstGame, catalog, LocationSourceType.MOCK, pendingStore = journal())
+            first.selectTeam("u", "red")
+            val fixes = samples(catalog.roads.first())
+            fixes.dropLast(1).forEach { now = it.timestampUtcMs; first.onSample(it) }
+            store.fail = true
+            now = fixes.last().timestampUtcMs
+            try { first.onSample(fixes.last()); fail("Expected failure") } catch (_: IOException) { }
+            assertEquals(1, journal().read().size)
+            store.fail = false
+            val restoredGame = game()
+            val restored = ConquestLocationPipeline(restoredGame, catalog, LocationSourceType.MOCK, pendingStore = journal())
+            assertEquals(ContributionResult.ACCEPTED, restored.retryPending().single().result)
+            assertEquals(1, restoredGame.getSummary("u").contributionCount)
+            assertTrue(journal().read().isEmpty())
+        } finally { folder.deleteRecursively() }
+    }
+
+    @Test fun journalRemovalFailureReplaysAsDuplicateAfterRestart() = runTest {
+        var now = base
+        val store = MemoryStore()
+        val journal = MemoryPendingVisitsStore()
+        val failingJournal = object : PendingVisitsStore {
+            override fun read() = journal.read()
+            override fun write(events: List<RoadVisited>) {
+                if (events.isEmpty()) throw IOException("Cannot acknowledge")
+                journal.write(events)
+            }
+        }
+        fun game() = LocalConquestFeature(setOf("red"), catalog.roads.map { it.id }.toSet(),
+            catalog.version, LocationSourceType.MOCK, store, { now })
+        val first = ConquestLocationPipeline(game(), catalog, LocationSourceType.MOCK, pendingStore = failingJournal)
+        first.selectTeam("u", "red")
+        try { samples(catalog.roads.first()).forEach { now = it.timestampUtcMs; first.onSample(it) }; fail("Expected failure") }
+        catch (_: IOException) { }
+        val restoredGame = game()
+        val restored = ConquestLocationPipeline(restoredGame, catalog, LocationSourceType.MOCK, pendingStore = journal)
+        assertEquals(ContributionResult.DUPLICATE_EVENT, restored.retryPending().single().result)
+        assertEquals(1, restoredGame.getSummary("u").contributionCount)
+        assertEquals(0, restored.pendingCount)
+    }
+
+    @Test fun failedJournalWriteRetainsMemoryAndDoesNotPublishContribution() = runTest {
+        var now = base
+        val game = LocalConquestFeature(setOf("red"), catalog.roads.map { it.id }.toSet(), catalog.version,
+            LocationSourceType.MOCK, MemoryStore(), { now })
+        var failing = true
+        val journal = object : PendingVisitsStore {
+            override fun read() = emptyList<RoadVisited>()
+            override fun write(events: List<RoadVisited>) { if (failing) throw IOException("Journal unavailable") }
+        }
+        val pipeline = ConquestLocationPipeline(game, catalog, LocationSourceType.MOCK, pendingStore = journal)
+        pipeline.selectTeam("u", "red")
+        try { samples(catalog.roads.first()).forEach { now = it.timestampUtcMs; pipeline.onSample(it) }; fail("Expected failure") }
+        catch (_: IOException) { }
+        assertEquals(1, pipeline.pendingCount)
+        assertEquals(0, game.getSummary("u").contributionCount)
+        failing = false
+        pipeline.retryPending()
+        assertEquals(0, pipeline.pendingCount)
+        assertEquals(1, game.getSummary("u").contributionCount)
+    }
 }
