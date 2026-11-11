@@ -28,6 +28,14 @@ class ConquestSession private constructor(private val userId: String, private va
         private set
     var demoSettled by mutableStateOf(false)
         private set
+    var demoCompetitionStep by mutableIntStateOf(0)
+        private set
+    var demoCanCompete by mutableStateOf(false)
+        private set
+    var demoCompetitionBusy by mutableStateOf(false)
+        private set
+    var demoTimeUtcMs by mutableStateOf<Long?>(null)
+        private set
     var error by mutableStateOf<String?>(null)
         private set
     var visitStatus by mutableStateOf<String?>(null)
@@ -85,6 +93,9 @@ class ConquestSession private constructor(private val userId: String, private va
         demoState = snapshot
         demoLabel = route.label
         demoSettled = false
+        demoCompetitionStep = 0
+        demoCanCompete = false
+        demoTimeUtcMs = nextDemo.simulatedUtcMs
         completed = true
         }
         return completed
@@ -94,6 +105,22 @@ class ConquestSession private constructor(private val userId: String, private va
         val current = demo ?: return@change
         demoState = withContext(Dispatchers.IO) { current.settle() }
         demoSettled = current.settled
+        demoCanCompete = current.canCompete
+        demoTimeUtcMs = current.simulatedUtcMs
+    }
+
+    suspend fun advanceDemoCompetition() {
+        if (demoCompetitionBusy) return
+        demoCompetitionBusy = true
+        try {
+            change {
+                val current = demo ?: return@change
+                demoState = withContext(Dispatchers.IO) { current.advanceCompetition() }
+                demoCompetitionStep = current.competitionStep
+                demoCanCompete = current.canCompete
+                demoTimeUtcMs = current.simulatedUtcMs
+            }
+        } finally { demoCompetitionBusy = false }
     }
 
     suspend fun exitDemo() = change {
@@ -101,6 +128,9 @@ class ConquestSession private constructor(private val userId: String, private va
         demoState = null
         demoLabel = null
         demoSettled = false
+        demoCompetitionStep = 0
+        demoCanCompete = false
+        demoTimeUtcMs = null
     }
 
     fun resetInput() { pipeline.resetObservations(userId) }

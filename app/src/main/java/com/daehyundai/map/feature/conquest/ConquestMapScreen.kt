@@ -142,6 +142,24 @@ import kotlin.math.*
             Button(onClick = { scope.launch { session.settleDemo() } }, enabled = !session.demoSettled) {
                 Text(if (session.demoSettled) "낮 12시 정산 완료" else "낮 12시 정산")
             }
+            session.demoTimeUtcMs?.let { Text("시연 가상 시각: ${formatSettlement(it)}") }
+            if (session.demoSettled && label == DemoRoute.COMPLETE.label) {
+                Text(when(session.demoCompetitionStep) {
+                    0 -> "경쟁 1/4 · 내 팀 점령"
+                    1 -> "경쟁 2/4 · 상대 팀 탈환"
+                    2 -> "경쟁 3/4 · 동점으로 상대 팀 유지"
+                    else -> "경쟁 4/4 · 기여 만료로 중립"
+                })
+                Text("추가 참여자 기여는 모의 이벤트입니다. 탐험은 처음 재생한 내 경로를 유지합니다.")
+                OutlinedButton(onClick = { scope.launch { session.advanceDemoCompetition() } }, enabled = session.demoCanCompete && !session.demoCompetitionBusy) {
+                    Text(when(session.demoCompetitionStep) {
+                        0 -> "상대 팀 탈환 시연"
+                        1 -> "동점 유지 시연"
+                        2 -> "기여 만료 시연"
+                        else -> "경쟁 시연 완료"
+                    })
+                }
+            }
             TextButton(onClick = { scope.launch { session.exitDemo() } }) { Text("시연 종료") }
         }
     }

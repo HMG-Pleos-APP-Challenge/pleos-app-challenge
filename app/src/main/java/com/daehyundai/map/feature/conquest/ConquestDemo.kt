@@ -1,5 +1,6 @@
 package com.daehyundai.map.feature.conquest
 
+import com.daehyundai.map.core.model.RoadVisited
 import com.daehyundai.map.core.model.LocationSample
 import com.daehyundai.map.core.model.LocationSourceType
 import com.daehyundai.map.feature.conquest.data.ConquestRecord
@@ -18,12 +19,17 @@ internal class ConquestDemo(
     private val userId: String,
     private val catalog: ConquestCatalog,
     private val teams: List<String>,
-    teamId: String,
+    private val teamId: String,
 ) {
     private val start = Instant.parse("2026-11-11T00:00:00Z").toEpochMilli()
     private val noon = Instant.parse("2026-11-11T03:00:00Z").toEpochMilli()
     private var now = start
     val settled get() = now >= noon
+    var competitionStep = 0
+        private set
+    private var completeRoute = false
+    val canCompete get() = completeRoute && settled && teams.any { it != teamId } && competitionStep < 3
+    val simulatedUtcMs get() = now
     private val store = object : ConquestStore {
         private var saved: ConquestRecord? = null
         override fun read() = saved
@@ -36,6 +42,7 @@ internal class ConquestDemo(
     init { check(pipeline.selectTeam(userId, teamId)) }
 
     suspend fun replay(route: DemoRoute, onSample: suspend (LocationSample) -> Unit = {}): ConquestViewState {
+        completeRoute = route == DemoRoute.COMPLETE
         val road = catalog.roads.first()
         val points = road.points.zipWithNext().flatMap { (a, b) ->
             val steps = ceil(road.distance(a, b) / 12.0).toInt().coerceAtLeast(1)
@@ -68,8 +75,39 @@ internal class ConquestDemo(
     }
 
     suspend fun settle(): ConquestViewState {
-        now = noon
+        if (now < noon) now = noon
         return snapshot()
+    }
+
+    suspend fun advanceCompetition(): ConquestViewState {
+        if (!canCompete) return snapshot()
+        val day = 86_400_000L
+        val opponent = teams.first { it != teamId }
+        when (competitionStep) {
+            0 -> {
+                now = start + day
+                awardParticipants(opponent, "opponent")
+                now = noon + day
+            }
+            1 -> {
+                now = start + 2 * day
+                awardParticipants(teamId, "allies")
+                now = noon + 2 * day
+            }
+            2 -> now = noon + 5 * day
+        }
+        val result = snapshot()
+        competitionStep++
+        return result
+    }
+
+    private fun awardParticipants(team: String, group: String) {
+        repeat(2) { index ->
+            val participant = "competition:$userId:$group:$index"
+            check(feature.selectTeam(participant, team))
+            check(feature.accept(RoadVisited("$participant:$now", participant, catalog.roads.first().id,
+                now, LocationSourceType.MOCK)) == com.daehyundai.map.feature.conquest.domain.ContributionResult.ACCEPTED)
+        }
     }
 
     private suspend fun snapshot() = ConquestViewState(catalog, feature.getSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
