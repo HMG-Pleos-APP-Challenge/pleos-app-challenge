@@ -44,38 +44,46 @@ import kotlin.math.*
     if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     Text("남양성지로 · 테스트 도로 3구간 / 방향별 6구간")
-    if (session?.demoEnabled == true && state != null) ConquestDemoControls(session, onReplayDemo)
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     catalog?.let { roads ->
         val selected = selectedId?.takeIf { id -> roads.roads.any { it.id == id } } ?: roads.roads.first().id
         ConquestMapPreview(roads, state?.owners.orEmpty(), state?.teamIds.orEmpty(), selected)
         Text("방향별 구간 선택", style = MaterialTheme.typography.titleMedium)
-        roads.roads.forEach { road ->
-            OutlinedButton(onClick = { selectedId = road.id }, modifier = Modifier.fillMaxWidth()) {
-                Text("${if (road.id == selected) "선택 · " else ""}${roadLabel(roads, road)} · ${state?.owners?.get(road.id) ?: "중립"}")
+        roads.roads.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEach { road ->
+                    FilterChip(selected = road.id == selected, onClick = { selectedId = road.id },
+                        modifier = Modifier.weight(1f), label = { Text(roadLabel(roads, road)) })
+                }
             }
         }
+        var detailsExpanded by rememberSaveable(selected) { mutableStateOf(false) }
         val road = roads.roads.first { it.id == selected }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(roadLabel(roads, road), style = MaterialTheme.typography.titleMedium)
                 Text("${road.name} · 약 ${road.lengthMeters.toInt()}m")
-                Text("교차로 노드 ${road.fromNode} → ${road.toNode}")
+                Text("A/B는 지도에 표시된 구간의 양 끝입니다. 화살표 방향으로 완주하면 해당 방향에 기여합니다.",
+                    style = MaterialTheme.typography.bodySmall)
                 val detail = state?.roadDetails?.get(selected)
                 if (detail == null) Text("상세 기록을 불러오는 중입니다.") else {
                     Text("현재 소유 팀: ${detail.ownerTeamId ?: "중립"}")
+                    Text("이 방향 내 누적 인정 기여: ${detail.contributionCount}회")
+                    TextButton(onClick = { detailsExpanded = !detailsExpanded }) {
+                        Text(if (detailsExpanded) "기여·정산 상세 접기" else "기여·정산 상세 보기")
+                    }
+                    if (detailsExpanded) {
                     Text("마지막 정산: ${detail.settledUtcMs?.let(::formatSettlement) ?: "첫 정산 전"}")
                     detail.settlement?.let { result ->
                         HorizontalDivider()
                         Text("마지막 정산 결과", style = MaterialTheme.typography.titleSmall)
                         Text("집계 시작 포함: ${formatSettlement(result.timestampUtcMs - ConquestTime.WINDOW_MILLIS)}")
                         Text("집계 종료 제외: ${formatSettlement(result.timestampUtcMs)}")
-                        state?.teamIds.orEmpty().forEach { team -> Text("$team · ${result.scores[team] ?: 0}점") }
+                        state.teamIds.forEach { team -> Text("$team · ${result.scores[team] ?: 0}점") }
                         Text("${result.previousOwnerTeamId ?: "중립"} → ${result.ownerTeamId ?: "중립"}")
                         Text(result.reason.label)
                         Text("이 기기에서 인정된 기여 기준 · 진행 중인 다음 정산 점수는 포함하지 않습니다.")
                     }
-                    Text("이 방향 내 누적 인정 기여: ${detail.contributionCount}회")
                     HorizontalDivider()
                     Text("${detail.dateKst} · KST 오늘 기여", style = MaterialTheme.typography.titleSmall)
                     Text("오전 00:00–12:00 · ${if (detail.morningAccepted) "인정 완료" else "인정 기록 없음"}")
@@ -90,6 +98,7 @@ import kotlin.math.*
                         Text("미처리 기록 ${session?.pendingVisitCount}건 · 인정 현황은 저장 완료된 기여 기준입니다.")
 
                     Text("완주 기여 인정 후, 소유 결과는 낮 12시 정산에 반영됩니다.")
+                    }
                 }
             }
         }
@@ -110,6 +119,7 @@ import kotlin.math.*
         state.teamIds.forEach { Text("● $it", color = teamColor(it, state.teamIds)) }
         Text("회색: 중립 · 화살표: 진행 방향")
     }
+    if (session?.demoEnabled == true && state != null) ConquestDemoControls(session, onReplayDemo)
     Text("© OpenStreetMap contributors · ODbL 1.0", style = MaterialTheme.typography.labelSmall)
     Text(if(session?.sourceType==com.daehyundai.map.core.model.LocationSourceType.PLEOS)
         "SDK 위치 사용 · 이 기기의 기록이며 서버 경쟁과 연동되지 않습니다." else "모의·시연 기록 · 실제 위치 기록과 분리됩니다.")
