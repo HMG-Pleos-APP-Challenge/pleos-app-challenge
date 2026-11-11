@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VehicleRecordingPolicyTest {
+    @Test fun conquestRetainsItsVehicleRecordingPolicy() {
+        assertFalse(shouldRecord(true,VehicleInteraction.UNKNOWN))
+        assertFalse(shouldRecord(true,VehicleInteraction.UNRESTRICTED))
+        assertTrue(shouldRecord(true,VehicleInteraction.RESTRICTED))
+        VehicleInteraction.values().forEach { assertTrue(shouldRecord(false,it)) }
+    }
+
     @Test fun vehicleRestrictionsGateBrowsing() {
         assertFalse(canBrowseDetails(VehicleInteraction.UNKNOWN,false))
         assertFalse(canBrowseDetails(VehicleInteraction.RESTRICTED,false))

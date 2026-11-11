@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class VehicleCapability { CHECKING, AVAILABLE, UNAVAILABLE }
 
 enum class VehicleInteraction { UNKNOWN, UNRESTRICTED, RESTRICTED }
+fun shouldRecord(automatic:Boolean,state:VehicleInteraction)=!automatic || state==VehicleInteraction.RESTRICTED
+
 fun canBrowseDetails(state:VehicleInteraction,debugEmulatorWithoutCarApi:Boolean) =
     state == VehicleInteraction.UNRESTRICTED || debugEmulatorWithoutCarApi
 

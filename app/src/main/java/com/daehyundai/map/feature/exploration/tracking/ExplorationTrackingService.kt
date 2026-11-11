@@ -32,9 +32,9 @@ object ExplorationTracking {
     internal val syncAccess = Mutex()
     internal val mutable=MutableStateFlow(TrackingSnapshot())
     val state=mutable.asStateFlow()
-    fun start(context:Context,userId:String) {
+    fun start(context:Context,userId:String,automatic:Boolean=false,recordConquest:Boolean=true) {
         require(userId.isNotBlank())
-        context.startForegroundService(Intent(context,ExplorationTrackingService::class.java).putExtra("userId",userId))
+        context.startForegroundService(Intent(context,ExplorationTrackingService::class.java).putExtra("userId",userId).putExtra("automatic",automatic).putExtra("recordConquest",recordConquest))
     }
     fun stop(context:Context) { context.stopService(Intent(context,ExplorationTrackingService::class.java)) }
 }
@@ -42,16 +42,22 @@ object ExplorationTracking {
 class ExplorationTrackingService:Service() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var job:Job?=null
+    private var automatic=false
+    private var recordConquest=false
+    private var releaseVehicle:(()->Unit)?=null
     private var activeConquest:com.daehyundai.map.feature.conquest.ConquestSession?=null
     private var speaker:PleosUnlockSpeaker?=null
     private var announcements:UnlockAnnouncements?=null
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onCreate() {
         super.onCreate()
+        releaseVehicle=VehicleSafety.acquire(this)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL,"탐험 기록",NotificationManager.IMPORTANCE_LOW))
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
+        automatic=intent?.getBooleanExtra("automatic",false) ?: false
+        recordConquest=intent?.getBooleanExtra("recordConquest",true) ?: true
         if(job?.isActive==true) return START_REDELIVER_INTENT
         val userId=intent?.getStringExtra("userId")
         if(userId.isNullOrBlank()) { stopSelf(); return START_NOT_STICKY }
@@ -88,6 +94,7 @@ class ExplorationTrackingService:Service() {
                     }
                 }
                 ExplorationTracking.mutable.update { it.copy(session=session,conquest=conquest,policy=policy,message="SDK 위치 업데이트 대기") }
+                var wasConquestRecording=false
                 PleosLocationSource(userId,{ PleosSdkConnection(this@ExplorationTrackingService) },accuracyPolicy=policy)
                     .samples().retryWhen { error, attempt ->
                         if (error is CancellationException || error is SecurityException || error !is Exception) return@retryWhen false
@@ -97,7 +104,14 @@ class ExplorationTrackingService:Service() {
                     }.collect { sample ->
                         ExplorationTracking.sampleAccess.withLock {
                             val result=session.acceptSdk(sample)
-                            conquest?.onSample(sample)
+                            // Exploration remains continuous. Conquest retains its previous vehicle-state gate.
+                            if (recordConquest && shouldRecord(automatic,VehicleSafety.state.value)) {
+                                conquest?.onSample(sample)
+                                wasConquestRecording=true
+                            } else {
+                                if(wasConquestRecording) conquest?.onSample(sample.copy(accuracyMeters=null))
+                                wasConquestRecording=false
+                            }
                             announcements?.record(result)
                             ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status+" · "+session.cloudStatus) }
                         }
@@ -118,7 +132,7 @@ class ExplorationTrackingService:Service() {
     }
     override fun onDestroy() {
         activeConquest?.resetInput();activeConquest=null
-        announcements?.cancel(); speaker?.close(); scope.cancel()
+        announcements?.cancel(); speaker?.close(); scope.cancel();releaseVehicle?.invoke()
         ExplorationTracking.mutable.update { it.copy(running=false,message=if(it.message.startsWith("기록 오류")) it.message else if(it.message.startsWith("기록 시작 실패")) it.message else "위치 권한·설정을 확인해 주세요.") }
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()

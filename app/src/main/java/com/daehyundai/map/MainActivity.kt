@@ -81,7 +81,9 @@ private object DetailPages {
     fun openLandmark(id:String) { landmarkId=id;go(DetailPages.LANDMARK) }
     var permissionMessage by remember { mutableStateOf("") }
     fun startTracking() {
-        runCatching { ExplorationTracking.start(context,userId) }
+        runCatching { ExplorationTracking.start(context,userId,
+            automatic=context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE).getBoolean("automatic",false),
+            recordConquest=context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE).getBoolean("automatic",false)) }
             .onFailure { permissionMessage="기록을 시작하지 못했어요. 다시 시도해 주세요." }
     }
     val permissionLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
