@@ -13,12 +13,15 @@ data class ProcessedRoadVisit(val event: RoadVisited, val result: ContributionRe
  */
 class ConquestLocationPipeline(private val feature: LocalConquestFeature, catalog: ConquestCatalog,
     source: LocationSourceType, policy: RoadDetectionPolicy = RoadDetectionPolicy(),
-    private val pendingStore: PendingVisitsStore = MemoryPendingVisitsStore()) {
+    private val pendingStore: PendingVisitsStore = MemoryPendingVisitsStore(),
+    private val clock: () -> Long = System::currentTimeMillis) {
     private val detector = DirectedRoadDetector(catalog, source, policy)
     private val pending = ArrayDeque(pendingStore.read().also { events ->
         require(events.all { it.source == source && catalog.roads.any { road -> road.id == it.roadSegmentId } })
     })
     val pendingCount: Int @Synchronized get() = pending.size
+    var lastResult: ProcessedRoadVisit? = null
+        private set
 
     @Synchronized fun resetObservations(userId:String) { detector.reset(userId) }
 
@@ -38,9 +41,15 @@ class ConquestLocationPipeline(private val feature: LocalConquestFeature, catalo
         while (pending.isNotEmpty()) {
             val event = pending.first()
             val result = feature.accept(event)
+            if (result == ContributionResult.FUTURE && event.timestampUtcMs - clock() <= 5_000L) {
+                lastResult = ProcessedRoadVisit(event, result)
+                break
+            }
             pendingStore.write(pending.drop(1))
             pending.removeFirst()
-            results.add(ProcessedRoadVisit(event, result))
+            val processed = ProcessedRoadVisit(event, result)
+            lastResult = processed
+            results.add(processed)
         }
         return results
     }

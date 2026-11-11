@@ -11,6 +11,53 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ConquestLocationPipelineTest {
+    @Test fun allowedFutureVisitsWaitThenKeepTheirOriginalNoonBoundary() = runTest {
+        val noon = Instant.parse("2026-11-11T03:00:00Z").toEpochMilli()
+        for (offset in listOf(1_000L, 5_000L)) {
+            var now = noon - 500
+            val store = MemoryStore()
+            val game = LocalConquestFeature(setOf("red"), catalog.roads.map { it.id }.toSet(),
+                catalog.version, LocationSourceType.MOCK, store, { now })
+            game.selectTeam("u", "red")
+            val event = RoadVisited("future-$offset", "u", catalog.roads.first().id,
+                now + offset, LocationSourceType.MOCK)
+            val journal = MemoryPendingVisitsStore().also { it.write(listOf(event)) }
+            val pipeline = ConquestLocationPipeline(game, catalog, LocationSourceType.MOCK,
+                pendingStore = journal, clock = { now })
+            assertTrue(pipeline.retryPending().isEmpty())
+            assertEquals(1, pipeline.pendingCount)
+            assertEquals(event, journal.read().single())
+            assertEquals(ContributionResult.FUTURE, pipeline.lastResult?.result)
+            now = event.timestampUtcMs
+            assertEquals(ContributionResult.ACCEPTED, pipeline.retryPending().single().result)
+            assertEquals(1, game.getSummary("u").contributionCount)
+            assertEquals(0, game.getSummary("u").ownedRoadCount)
+            now = noon + 24 * 60 * 60 * 1000
+            assertEquals(1, game.getSummary("u").ownedRoadCount)
+            assertTrue(pipeline.retryPending().isEmpty())
+        }
+    }
+
+    @Test fun excessiveFutureAndLateVisitsExposeFinalRejectionWithoutCounting() = runTest {
+        val noon = Instant.parse("2026-11-11T03:00:00Z").toEpochMilli()
+        var now = noon - 10_000
+        val game = LocalConquestFeature(setOf("red"), catalog.roads.map { it.id }.toSet(),
+            catalog.version, LocationSourceType.MOCK, MemoryStore(), { now })
+        game.selectTeam("u", "red")
+        val journal = MemoryPendingVisitsStore()
+        journal.write(listOf(RoadVisited("too-future", "u", catalog.roads.first().id, now + 5_001, LocationSourceType.MOCK)))
+        val pipeline = ConquestLocationPipeline(game, catalog, LocationSourceType.MOCK,
+            pendingStore = journal, clock = { now })
+        assertEquals(ContributionResult.FUTURE, pipeline.retryPending().single().result)
+        assertEquals(0, pipeline.pendingCount)
+        journal.write(listOf(RoadVisited("late", "u", catalog.roads.first().id, noon - 1, LocationSourceType.MOCK)))
+        now = noon + 1
+        val restored = ConquestLocationPipeline(game, catalog, LocationSourceType.MOCK,
+            pendingStore = journal, clock = { now })
+        assertEquals(ContributionResult.LATE, restored.retryPending().single().result)
+        assertEquals(ContributionResult.LATE, restored.lastResult?.result)
+        assertEquals(0, game.getSummary("u").contributionCount)
+    }
     private val catalog = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
     private val base = Instant.parse("2026-11-10T04:00:00Z").toEpochMilli()
     private class MemoryStore : ConquestStore {

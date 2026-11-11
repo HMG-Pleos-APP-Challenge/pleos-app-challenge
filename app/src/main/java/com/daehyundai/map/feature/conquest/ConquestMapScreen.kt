@@ -35,6 +35,7 @@ import kotlin.math.*
     val catalog = state?.catalog ?: baseCatalog
     val current = state?.summary ?: summary
     session?.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+    if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     Text("남양성지로 · 테스트 도로 3구간 / 방향별 6구간")
     if (session?.demoEnabled == true && state != null) ConquestDemoControls(session)

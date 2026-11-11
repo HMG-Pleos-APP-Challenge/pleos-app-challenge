@@ -29,16 +29,37 @@ class ConquestSession private constructor(private val userId: String, private va
         private set
     var error by mutableStateOf<String?>(null)
         private set
+    var visitStatus by mutableStateOf<String?>(null)
+        private set
+    internal val hasPendingVisits get() = pipeline.pendingCount > 0
+    var pendingVisitCount by mutableIntStateOf(0)
+        private set
     private val mutex = Mutex()
 
     private suspend fun change(action: suspend () -> Unit) = mutex.withLock {
         try {
             action()
-            error = if (pipeline.pendingCount > 0) "미처리 점령 기록 ${pipeline.pendingCount}건 · 저장 재시도 필요" else null
+            visitStatus = pipeline.lastResult?.result?.let { result ->
+                when (result) {
+                    ContributionResult.ACCEPTED -> "최근 완주 기여가 인정됐습니다."
+                    ContributionResult.FUTURE -> if (hasPendingVisits) "완주 기록 시각 대기 중 · 원본 시각에 도달하면 재처리합니다."
+                        else "완주 기여 미인정 · 허용 범위를 벗어난 미래 시각입니다."
+                    ContributionResult.LATE -> "완주 기여 미인정 · 이미 마감된 기간의 기록입니다."
+                    ContributionResult.DUPLICATE_EVENT, ContributionResult.DUPLICATE_HALF_DAY -> "이미 처리한 이벤트 또는 같은 반일의 방향 구간입니다 · 추가 기여 없음"
+                    ContributionResult.NO_TEAM, ContributionResult.BEFORE_TEAM_SELECTION -> "완주 기여 미인정 · 팀 선택 전 기록입니다."
+                    ContributionResult.WRONG_SOURCE -> "완주 기여 미인정 · 입력 출처가 다릅니다."
+                    ContributionResult.UNKNOWN_SEGMENT -> "완주 기여 미인정 · 등록되지 않은 도로입니다."
+                    ContributionResult.INVALID -> "완주 기여 미인정 · 기록 형식을 확인해 주세요."
+                }
+            }
+            error = if (hasPendingVisits && pipeline.lastResult?.result != ContributionResult.FUTURE)
+                "미처리 점령 기록 ${pipeline.pendingCount}건 · 저장 재시도 필요" else null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             error = "점령 기록을 처리하지 못했습니다. 기존 기록은 유지되며 다시 확인이 필요합니다."
+        } finally {
+            pendingVisitCount = pipeline.pendingCount
         }
     }
 
@@ -120,11 +141,11 @@ class ConquestSession private constructor(private val userId: String, private va
             error = "점령 데이터를 열 수 없습니다. 기존 파일은 보존했습니다."
         }
     }
-    LaunchedEffect(session) {
+    LaunchedEffect(session, session?.pendingVisitCount) {
         val current = session ?: return@LaunchedEffect
         while (isActive) {
             current.refresh()
-            delay(30_000) // Foreground refresh only; this is not an Android background scheduler.
+            delay(if (current.hasPendingVisits) 1_000 else 30_000)
         }
     }
     return session to error
