@@ -21,7 +21,8 @@ import kotlinx.coroutines.flow.update
 
 data class TrackingSnapshot(val running:Boolean=false,val userId:String?=null,
     val session:ExplorationSession?=null,val conquest:com.daehyundai.map.feature.conquest.ConquestSession?=null,val policy:PleosAccuracyPolicy=PleosAccuracyPolicy.UNVERIFIED,
-    val message:String="탐험 기록 꺼짐",val voice:String="",val receivedCount:Int=0,val lastSampleTimestamp:Long?=null)
+    val message:String="탐험 기록 꺼짐",val voice:String="",val receivedCount:Int=0,val lastSampleTimestamp:Long?=null,
+    val explorationError:String?=null,val conquestError:String?=null)
 
 object ExplorationTracking {
     internal val mutable=MutableStateFlow(TrackingSnapshot())
@@ -71,39 +72,51 @@ class ExplorationTrackingService:Service() {
         job=scope.launch {
             try {
                 val policy=pleosAccuracyPolicy(this@ExplorationTrackingService)
-                val session=withContext(Dispatchers.IO) {
-                    openExplorationSession(this@ExplorationTrackingService,userId,LocationSourceType.PLEOS,policy.recordPrefix)
-                }
+                val session=try {
+                    withContext(Dispatchers.IO) {
+                        openExplorationSession(this@ExplorationTrackingService,userId,LocationSourceType.PLEOS,policy.recordPrefix).also { it.refresh() }
+                    }
+                } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
                 val conquest=try {
                     com.daehyundai.map.feature.conquest.ConquestSession.open(this@ExplorationTrackingService,userId,
                         source=LocationSourceType.PLEOS,recordPrefix=policy.recordPrefix).also { it.resetInput();it.refresh() }
                 } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
                 activeConquest=conquest
-                session.refresh()
                 launch {
                     while(isActive) {
-                        session.syncCloud()
+                        session?.syncCloud()
                         delay(15_000)
                     }
                 }
-                ExplorationTracking.mutable.update { it.copy(session=session,conquest=conquest,policy=policy,message="SDK 위치 업데이트 대기") }
+                ExplorationTracking.mutable.update { it.copy(session=session,conquest=conquest,policy=policy,message="SDK 위치 업데이트 대기",
+                    explorationError=if(session==null) "탐험 기록을 열 수 없습니다 · 기록 중지 후 다시 시작해 주세요." else null,
+                    conquestError=if(conquest==null) "점령 기록을 열 수 없습니다 · 기록 중지 후 다시 시작해 주세요." else conquest.error) }
+                suspend fun deliver(sample:com.daehyundai.map.core.model.LocationSample):LocationDeliveryResult {
+                    val result=deliverLocationSample(sample,
+                        { checkNotNull(session).acceptSdk(it) },
+                        { checkNotNull(conquest).onSample(it) })
+                    ExplorationTracking.mutable.update { it.copy(
+                        explorationError=if(result.exploration.isFailure) "탐험 기록 처리 실패 · 저장 공간과 기록 파일을 확인해 주세요." else null,
+                        conquestError=if(result.conquest.isFailure) "점령 기록 처리 실패 · 저장 공간과 기록 파일을 확인해 주세요." else conquest?.error) }
+                    return result
+                }
                 var wasRecording=false
                 PleosLocationSource(userId,{ PleosSdkConnection(this@ExplorationTrackingService) },accuracyPolicy=policy)
                     .samples().collect { sample ->
                         if(!shouldRecord(automatic,VehicleSafety.state.value)) {
                             if(wasRecording) {
                                 val invalid=sample.copy(accuracyMeters=null)
-                                session.acceptSdk(invalid);conquest?.onSample(invalid)
+                                deliver(invalid)
                             }
                             wasRecording=false
                             ExplorationTracking.mutable.update { it.copy(message="자동 기록 대기 · 차량 운행 상태가 확인되면 기록합니다") }
                             return@collect
                         }
                         wasRecording=true
-                        val result=session.acceptSdk(sample)
-                        conquest?.onSample(sample)
-                        announcements?.record(result)
-                        ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status+" · "+session.cloudStatus) }
+                        val result=deliver(sample)
+                        result.exploration.getOrNull()?.let { announcements?.record(it) }
+                        ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,
+                            message=it.explorationError ?: session?.let { current -> current.status+" · "+current.cloudStatus } ?: "SDK 위치 수신 중") }
                     }
             } catch(cancelled:CancellationException) { throw cancelled
             } catch(_:Exception) {

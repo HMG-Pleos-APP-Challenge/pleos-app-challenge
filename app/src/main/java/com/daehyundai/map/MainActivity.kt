@@ -137,6 +137,10 @@ private object DetailPages {
                         verticalArrangement=Arrangement.spacedBy(16.dp)) {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
+                        if (sdkSelected && sdkState.userId==userId) {
+                            sdkState.explorationError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                            sdkState.conquestError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                        }
                         val emulatorWithoutVehicleApi=developerEnabled && (Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.UNAVAILABLE
                         if(emulatorWithoutVehicleApi) Text("에뮬레이터 수동 테스트 모드 · 차량 상태 API 미지원, 자동 주행 판정 안 함")
                         if(vehicleState!=com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.UNRESTRICTED && !emulatorWithoutVehicleApi) {
