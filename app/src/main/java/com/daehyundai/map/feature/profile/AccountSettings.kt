@@ -8,8 +8,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.daehyundai.map.feature.exploration.cloud.SupabaseCloud
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.withLock
+import com.daehyundai.map.feature.exploration.tracking.ExplorationTracking
 
-fun canRestoreAccount(recording:Boolean,hasLocalAchievements:Boolean)=!recording && !hasLocalAchievements
+fun canRestoreAccount(hasLocalAchievements:Boolean)=!hasLocalAchievements
 
 @Composable fun AccountSettings(userId:String,canRestore:Boolean,onRestored:suspend ()->Unit) {
     val context=LocalContext.current.applicationContext
@@ -37,7 +39,11 @@ fun canRestoreAccount(recording:Boolean,hasLocalAchievements:Boolean)=!recording
     OutlinedButton(enabled=!busy && canRestore && email.contains('@') && password.length>=8,onClick={
         busy=true;scope.launch {
             try {
-                withContext(Dispatchers.IO) { cloud.restore(email,password,userId) }
+                ExplorationTracking.syncAccess.withLock {
+                    ExplorationTracking.sampleAccess.withLock {
+                        withContext(Dispatchers.IO) { cloud.restore(email,password,userId) }
+                    }
+                }
                 password="";onRestored();message="로그인 완료 · 탐험 화면에서 기록 동기화 상태를 확인해 주세요."
             } catch(e:CancellationException) { throw e }
             catch(_:Exception) { message="복원 실패 · 현재 계정은 유지됩니다. 로그인 정보와 미전송 기록을 확인해 주세요." }

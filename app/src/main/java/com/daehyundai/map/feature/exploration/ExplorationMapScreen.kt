@@ -40,11 +40,11 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     val syncScope=rememberCoroutineScope()
     session?.let {
         Text(it.cloudStatus,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        if(it.sourceType==com.daehyundai.map.core.model.LocationSourceType.PLEOS)
+        if(it.usesServerProgress)
             Column {
-                Text("탐험률·경험치는 서버 확정 기준이에요. 기기에만 남은 구역 ${it.localOnlyCells}개는 지도에서 별도로 확인할 수 있어요.",style=MaterialTheme.typography.bodySmall)
+                Text("탐험률·경험치는 서버 확정 기준이에요. 기기에만 남은 구역 ${it.pendingCells.size}개는 지도에서 별도로 확인할 수 있어요.",style=MaterialTheme.typography.bodySmall)
                 TextButton(onClick={syncScope.launch { it.syncCloud() }}) { Text("기록 동기화") }
-            }
+            } else Text("탐험률은 이 기기의 기록을 기준으로 계산해요.")
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun MapCard(modifier:Modifier) {
@@ -56,11 +56,11 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
                             Text("남양읍",style=MaterialTheme.typography.headlineMedium)
                         }
                         Surface(color=MaterialTheme.colorScheme.secondaryContainer,shape=androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
-                            Text(if(summary.discoveredRegionCount>0) "발견한 지역" else "첫 발견을 기다려요",Modifier.padding(12.dp),style=MaterialTheme.typography.labelLarge)
+                            Text(if(session?.regionDiscovered==true) "발견한 지역" else "첫 발견을 기다려요",Modifier.padding(12.dp),style=MaterialTheme.typography.labelLarge)
                         }
                     }
-                    ExplorationMapPreview(session,height=380,showDetails=true)
-                    ExplorationLegend()
+                    ExplorationMapPreview(session,height=380,showDetails=session?.regionDiscovered==true)
+                    if(session?.regionDiscovered==true) ExplorationLegend(session.usesServerProgress)
                     Text("지역 자세히 보기 →",color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.titleMedium)
                 }
             }
@@ -77,7 +77,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
                     }
                 }
                 Text("지나온 길은 기록으로, 새로운 발견은 음성으로.",style=MaterialTheme.typography.titleMedium)
-                Text("기록은 지역 상세에서 시작할 수 있어요. 지도와 도감은 주차 후 편하게 확인해 주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("위치 권한을 허용하면 탐험이 자동으로 기록돼요. 지도와 도감은 주차 후 편하게 확인해 주세요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick=onRegion,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("남양읍 탐험 열기") }
             }
         }
@@ -90,42 +90,32 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     MapAttribution(onSources)
 }
 
-@Composable fun RegionDetailScreen(session:ExplorationSession?,recording:Boolean,onStart:()->Unit,onStop:()->Unit,
-    onCells:()->Unit,onLandmark:(String)->Unit,onSources:()->Unit,permissionMessage:String="",onCell:(CellIndex)->Unit={}) {
+@Composable fun RegionDetailScreen(session:ExplorationSession?,recordingStatus:String,
+    onCells:()->Unit,onLandmark:(String)->Unit,onSources:()->Unit,onCell:(CellIndex)->Unit={}) {
     if(session==null) { Text("탐험 기록을 불러오고 있어요.");return }
     val summary=session.summary
-    Surface(color=if(recording) Color(0xFF203B36) else MaterialTheme.colorScheme.surfaceVariant,
-        shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(20.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-            Text(if(recording) "●" else "○",color=MaterialTheme.colorScheme.primary)
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                Text(if(recording) "탐험을 기록하고 있어요" else "탐험 기록이 꺼져 있어요",style=MaterialTheme.typography.titleMedium)
-                Text(if(recording) "화면을 닫아도 기록은 계속돼요. 새 발견은 음성으로 안내해요." else "시작 버튼을 누르면 위치 권한을 확인하고 기록을 시작해요.",
-                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+    Text(recordingStatus, style=MaterialTheme.typography.titleMedium)
+    if (!session.regionDiscovered) {
+        ExplorationMapPreview(session, height=320)
+        Text("남양읍에 처음 진입하면 지역 도감이 열려요.")
+        MapAttribution(onSources)
+        return
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun RegionMap(modifier:Modifier) {
             Card(modifier,colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) {
                 Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     ExplorationMapPreview(session,height=420,showDetails=true,onLandmark=onLandmark,onCell=onCell)
-                    ExplorationLegend()
+                    ExplorationLegend(session.usesServerProgress)
                     Text("구역이나 명소를 선택하면 상세 기록을 볼 수 있어요.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         @Composable fun RegionProgress(modifier:Modifier) {
             Column(modifier,verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                Text(if(summary.discoveredRegionCount>0) "나의 남양읍 기록" else "남양읍의 첫 발견을 향해",style=MaterialTheme.typography.titleLarge)
+                Text("나의 남양읍 기록",style=MaterialTheme.typography.titleLarge)
                 Text(explorationRate(summary),style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.primary)
                 Text("탐험한 구역 ${summary.exploredUnitCount} / ${summary.totalExplorableUnitCount}")
-                if(recording) {
-                    OutlinedButton(onClick=onStop,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("탐험 기록 중지") }
-                } else {
-                    Button(onClick=onStart,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("탐험 기록 시작") }
-                }
-                if(permissionMessage.isNotEmpty()) Text(permissionMessage,color=MaterialTheme.colorScheme.error)
                 OutlinedButton(onClick=onCells,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp)) { Text("탐험한 구역 보기 →") }
                 Text("상세 기록은 주차 후 확인해 주세요.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -157,9 +147,10 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     MapAttribution(onSources)
 }
 
-@Composable private fun ExplorationLegend() {
+@Composable private fun ExplorationLegend(serverProgress:Boolean) {
     Row(horizontalArrangement=Arrangement.spacedBy(20.dp)) {
-        Text("■ 탐험한 구역",color=Color(0xFF62E4AF),style=MaterialTheme.typography.labelLarge)
+        if(serverProgress) Text("■ 동기화 대기",color=Color(0xFFF4A261),style=MaterialTheme.typography.labelLarge)
+        Text(if(serverProgress) "■ 서버 확정" else "■ 탐험한 구역",color=Color(0xFF62E4AF),style=MaterialTheme.typography.labelLarge)
         Text("□ 미탐험 구역",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelLarge)
         Text("● 명소",color=Color(0xFFC3A9F0),style=MaterialTheme.typography.labelLarge)
     }
@@ -171,7 +162,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     Text("도로를 따라 이동하면 지나간 구역이 열려요. 현재 지역의 모든 면적을 계산하는 비율은 아니에요.")
     if(session.unlockedCells.isEmpty()) Text("아직 해금한 도로 셀이 없어요.")
     session.unlockedCells.sortedWith(compareBy({it.col},{it.row})).take(30).forEachIndexed { index,cell ->
-        ListItem(headlineContent={Text("탐험한 구역 ${index+1}")},supportingContent={Text("해금 완료")},
+        ListItem(headlineContent={Text("탐험한 구역 ${index+1}")},supportingContent={Text(session.cellLabel(cell))},
             trailingContent={Text("지도 보기 →")},modifier=Modifier.clickable { onCell(cell) })
     }
     if(session.unlockedCells.size>30) Text("목록은 30개까지 표시해요. 전체 개수는 탐험률에 포함됩니다.")
@@ -182,7 +173,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     if(session==null || cell==null || catalog==null || cell !in catalog.cells) { Text("선택한 구역을 확인할 수 없어요.");return }
     val point=catalog.grid.unproject(MeterPoint((cell.col+.5)*catalog.grid.sizeMeters,(cell.row+.5)*catalog.grid.sizeMeters))
     ExplorationMapPreview(session,height=320,showDetails=true,focus=point,highlight=cell)
-    Text(if(cell in session.unlockedCells) "이 구역은 해금했어요." else "아직 탐험하지 않은 구역이에요.",style=MaterialTheme.typography.titleLarge)
+    Text(session.cellLabel(cell),style=MaterialTheme.typography.titleLarge)
     Text("도로 위 이동으로 해금하는 약 500m × 500m 크기의 탐험 구역이에요.")
     Text("처음 해금하면 10 XP를 얻어요. 같은 구역은 다시 지급하지 않아요.")
 }
@@ -269,7 +260,8 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
                 data.cells.keys.forEach { cell ->
                     val at=screen(MeterPoint(cell.col*grid.sizeMeters,(cell.row+1)*grid.sizeMeters))
                     val length=(grid.sizeMeters*scale).toFloat()
-                    drawRect(if(cell==highlight) Color(0xFFFFD56F) else if(cell in session.unlockedCells) Color(0xFF62E4AF) else Color(0xFF55615E),at,Size(length,length))
+                    drawRect(if(cell in session.pendingCells) Color(0xFFF4A261) else if(cell in session.unlockedCells) Color(0xFF62E4AF) else Color(0xFF55615E),at,Size(length,length))
+                    if(cell==highlight) drawRect(Color.White,at,Size(length,length),style=Stroke(2.dp.toPx()))
                 }
                 data.roads.forEach { road ->
                     val path=Path();road.points.forEachIndexed { i,p -> val at=screen(p);if(i==0) path.moveTo(at.x,at.y) else path.lineTo(at.x,at.y) }

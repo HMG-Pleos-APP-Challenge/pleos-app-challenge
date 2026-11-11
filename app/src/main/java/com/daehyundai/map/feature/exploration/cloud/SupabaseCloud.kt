@@ -91,7 +91,6 @@ class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud
         Unit
     }
     fun restore(email:String,password:String,localOwner:String):Unit=synchronized(lock) {
-        check(!com.daehyundai.map.feature.exploration.tracking.ExplorationTracking.state.value.running) { "기록 중에는 계정을 바꿀 수 없습니다" }
         for(prefix in listOf("pleos","pleos-emulator")) for(kind in listOf("discoveries","cells","landmarks")) {
             val file=java.io.File(appContext.filesDir,"exploration/$prefix-$kind.bin")
             if(file.exists()) java.io.DataInputStream(java.io.FileInputStream(file)).use {

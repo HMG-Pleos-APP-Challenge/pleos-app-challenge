@@ -57,8 +57,6 @@ private object DetailPages {
         val release=com.daehyundai.map.feature.exploration.tracking.VehicleSafety.acquire(context)
         onDispose { release() }
     }
-    val autoPrefs=remember { context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE) }
-    var automatic by remember { mutableStateOf(autoPrefs.getBoolean("automatic",false)) }
     val developerEnabled=context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE!=0
     val (mockSession,mockError)=rememberExplorationSession(userId)
     val sdkState=rememberPleosExploration()
@@ -83,7 +81,7 @@ private object DetailPages {
     fun openLandmark(id:String) { landmarkId=id;go(DetailPages.LANDMARK) }
     var permissionMessage by remember { mutableStateOf("") }
     fun startTracking() {
-        runCatching { ExplorationTracking.start(context,userId,automatic) }
+        runCatching { ExplorationTracking.start(context,userId) }
             .onFailure { permissionMessage="기록을 시작하지 못했어요. 다시 시도해 주세요." }
     }
     val permissionLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -91,17 +89,29 @@ private object DetailPages {
         val location=context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
             context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED
         if(sdk && location) { permissionMessage="";startTracking() }
-        else { automatic=false;autoPrefs.edit().putBoolean("automatic",false).apply();permissionMessage="탐험을 기록하려면 위치 권한을 허용해 주세요." }
+        else { permissionMessage="탐험을 기록하려면 위치 권한을 허용해 주세요." }
     }
     fun requestTracking() {
-        sdkSelected=true
+        if (context.checkSelfPermission(PLEOS_LOCATION_PERMISSION)==PackageManager.PERMISSION_GRANTED &&
+            (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
+             context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED)) {
+            permissionMessage=""
+            startTracking()
+            return
+        }
         val permissions=buildList {
             add(PLEOS_LOCATION_PERMISSION);add(Manifest.permission.ACCESS_FINE_LOCATION);add(Manifest.permission.ACCESS_COARSE_LOCATION)
             if(Build.VERSION.SDK_INT>=33) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         permissionLauncher.launch(permissions.toTypedArray())
     }
-    LaunchedEffect(userId,vehicleCapability) { if(automatic && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE) requestTracking() }
+    LaunchedEffect(userId) { if (!recording) requestTracking() }
+    val recordingStatus = when {
+        recording && sdkState.lastSampleTimestamp != null -> "탐험 기록 중 · 화면 밖에서도 기록해요."
+        recording -> "위치 신호를 기다리고 있어요."
+        permissionMessage.isNotEmpty() -> permissionMessage
+        else -> sdkState.message
+    }
     val scope=rememberCoroutineScope()
     BackHandler(stack.size>1) { back() }
     val title=when(page) {
@@ -125,7 +135,7 @@ private object DetailPages {
                     if(stack.size>1) TextButton(onClick={back()}) { Text("‹ 뒤로") }
                     Text(title,style=MaterialTheme.typography.headlineSmall,modifier=Modifier.weight(1f))
                     if(!sdkSelected && page!=Routes.CONQUEST_MAP) Text("모의 기록",style=MaterialTheme.typography.labelLarge)
-                    if(recording) TextButton(onClick={go(DetailPages.REGION)}) { Text("● 탐험 기록 중") }
+                    Text(recordingStatus, style=MaterialTheme.typography.labelLarge)
                 }
                 HorizontalDivider()
                 key(page) {
@@ -134,11 +144,12 @@ private object DetailPages {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
                         val emulatorWithoutVehicleApi=developerEnabled && (Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.UNAVAILABLE
-                        if(emulatorWithoutVehicleApi) Text("에뮬레이터 수동 테스트 모드 · 차량 상태 API 미지원, 자동 주행 판정 안 함")
-                        if(vehicleState!=com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.UNRESTRICTED && !emulatorWithoutVehicleApi) {
+                        if (!recording) TextButton(onClick={requestTracking()}) { Text("위치 권한·설정 확인") }
+                        if(!com.daehyundai.map.feature.exploration.tracking.canBrowseDetails(vehicleState,emulatorWithoutVehicleApi)) {
                             Text(if(vehicleState==com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.RESTRICTED)
-                                "운행 중에는 탐험을 자동으로 기록해요. 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
-                            if(recording) OutlinedButton(onClick={ExplorationTracking.stop(context)}) { Text("기록 중지") }
+                                "탐험 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
+                        } else if (page in setOf(DetailPages.CELLS,DetailPages.CELL,DetailPages.LANDMARK) && session?.regionDiscovered!=true) {
+                            Text("남양읍을 처음 발견하면 지역 도감이 열려요.")
                         } else when(page) {
                             Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},
                                 explorationPreview={ExplorationMapPreview(session)},
@@ -156,21 +167,17 @@ private object DetailPages {
                                     onSelectTeam={team -> scope.launch { conquest?.selectTeam(team) }},session=conquest)
                             }
                             Routes.EXPLORATION_MAP -> ExplorationMapScreen(summary,session,{go(DetailPages.REGION)},{go(DetailPages.SOURCES)})
-                            DetailPages.REGION -> RegionDetailScreen(session,recording,{requestTracking()},
-                                {ExplorationTracking.stop(context)},{go(DetailPages.CELLS)},{openLandmark(it)},
-                                {go(DetailPages.SOURCES)},permissionMessage,onCell={cell -> cellCol=cell.col;cellRow=cell.row;go(DetailPages.CELL)})
+                            DetailPages.REGION -> RegionDetailScreen(session,recordingStatus,{go(DetailPages.CELLS)},{openLandmark(it)},
+                                {go(DetailPages.SOURCES)},onCell={cell -> cellCol=cell.col;cellRow=cell.row;go(DetailPages.CELL)})
                             DetailPages.CELLS -> CellsScreen(session) { cell -> cellCol=cell.col;cellRow=cell.row;go(DetailPages.CELL) }
                             DetailPages.CELL -> CellDetailScreen(session,if(cellCol!=null && cellRow!=null) CellIndex(cellCol!!,cellRow!!) else null)
                             DetailPages.LANDMARK -> LandmarkDetailScreen(session,landmarkId,{go(DetailPages.SOURCES)})
                             Routes.PROFILE -> ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
                                 {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)},
-                                conquestDemo=conquest?.demoLabel!=null,onConquest={go(Routes.CONQUEST_MAP)})
-                            DetailPages.SETTINGS -> { PrototypeSettings(recording,developerEnabled,{ExplorationTracking.stop(context)},
-                                {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)},automatic,{ enabled ->
-                                    automatic=enabled;autoPrefs.edit().putBoolean("automatic",enabled).apply()
-                                    if(enabled) requestTracking() else ExplorationTracking.stop(context)
-                                },automaticSupported=vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE)
-                                AccountSettings(userId,canRestoreAccount(recording,session?.hasLocalAchievements ?: true)) { session?.syncCloud() }
+                                conquestDemo=conquest?.demoLabel!=null,onConquest={go(Routes.CONQUEST_MAP)},regionDiscovered=session?.regionDiscovered==true)
+                            DetailPages.SETTINGS -> { PrototypeSettings(recordingStatus,developerEnabled,
+                                {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)})
+                                AccountSettings(userId,canRestoreAccount((liveSession ?: savedSdkSession)?.hasLocalAchievements ?: true)) { (liveSession ?: savedSdkSession)?.syncCloud() }
                             }
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,
                                 {sdkSelected=it},{scenario -> scope.launch { mockSession?.replay(scenario) }}) else Text("개발자 도구는 개발 빌드에서만 열 수 있어요.")

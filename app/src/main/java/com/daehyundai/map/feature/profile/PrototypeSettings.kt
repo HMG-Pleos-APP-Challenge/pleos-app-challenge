@@ -8,19 +8,10 @@ import androidx.compose.ui.unit.dp
 import com.daehyundai.map.feature.exploration.ExplorationSession
 import com.daehyundai.map.feature.exploration.tracking.TrackingSnapshot
 
-@Composable fun PrototypeSettings(recording:Boolean,developerEnabled:Boolean,onStop:()->Unit,onSources:()->Unit,onDeveloper:()->Unit,automatic:Boolean=false,onAutomatic:(Boolean)->Unit={},automaticSupported:Boolean=true) {
-    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("자동 탐험 기록",style=MaterialTheme.typography.titleMedium)
-            Text("켜 두면 차량 운행 모드에서 기록하고, 주차 모드에서는 대기해요.")
-        }
-        Switch(checked=automatic,onCheckedChange=onAutomatic,enabled=automatic || automaticSupported)
-    }
-    if(!automaticSupported) Text("현재 기기는 차량 상태 API를 지원하지 않아 자동 기록을 사용할 수 없어요. 수동 기록으로 위치 기능을 테스트할 수 있어요.")
-    Text("자동 기록은 앱에서 한 번 켜야 하며, 앱 강제 종료·기기 재시작 후 앱을 다시 열어주세요.")
-    Text("탐험 기록",style=MaterialTheme.typography.titleLarge)
-    Text(if(recording) "기록 중 · 화면 밖에서도 탐험을 기록해요." else "현재 탐험을 기록하고 있지 않아요.")
-    if(recording) OutlinedButton(onClick=onStop) { Text("기록 중지") }
+@Composable fun PrototypeSettings(recordingStatus:String,developerEnabled:Boolean,onSources:()->Unit,onDeveloper:()->Unit) {
+    Text("자동 탐험 기록",style=MaterialTheme.typography.titleLarge)
+    Text(recordingStatus)
+    Text("앱을 다른 화면으로 전환해도 탐험 기록은 계속돼요.")
     Text("새 해금은 음성으로 안내해요. 다른 오디오가 우선인 경우 안내가 생략될 수 있어요.")
     HorizontalDivider()
     Text("진행도 안내",style=MaterialTheme.typography.titleLarge)

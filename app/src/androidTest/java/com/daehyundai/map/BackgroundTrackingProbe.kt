@@ -51,17 +51,26 @@ class BackgroundTrackingProbe(private val context:Context,private val report:(St
                 }
                 check(received) { "SDK callback missing; state=${ExplorationTracking.state.value.message}" }
             }
-            report("Observed background region=${ExplorationTracking.state.value.session!!.summary.discoveredRegionCount}, cells=${ExplorationTracking.state.value.session!!.summary.exploredUnitCount}")
-            check(ExplorationTracking.state.value.session!!.summary.exploredUnitCount==4)
-            check(ExplorationTracking.state.value.session!!.summary.discoveredRegionCount==1)
-            check(ExplorationTracking.state.value.session!!.progress.totalXp==140L)
-            report("PASS: background SDK samples -> region=1, roadCells=4, XP=140")
+            val live = state.session!!
+            val catalog = live.feature.cellExploration!!.catalog
+            val expected = road.map { catalog.grid.index(catalog.grid.project(it.point)) }.toSet()
+            val local = live.feature.cellExploration!!.unlockedCells(user)
+            report("Background route: expected=$expected, recorded=$local, pending=${live.pendingCells}, confirmed=${live.summary.exploredUnitCount}")
+            check(local.containsAll(expected)) { "Missing road cells: ${expected - local}" }
+            check(live.regionDiscovered)
+            check(live.pendingCells.all { it in live.unlockedCells })
+            if (live.usesServerProgress) {
+                check(live.unlockedCells.size - live.pendingCells.size == live.summary.exploredUnitCount)
+            } else {
+                check(live.pendingCells.isEmpty() && live.progress.totalXp == 140L)
+            }
+            report("PASS: background SDK samples persisted all four route cells and opened the region")
             check(withTimeoutOrNull(30_000) { ExplorationTracking.state.first { it.voice.contains("재생 완료") } }!=null) { "TTS did not finish: ${ExplorationTracking.state.value.voice}; observed=$voices" }
             report("PASS: on-device Pleos TTS playback completed")
             val restored=withContext(Dispatchers.IO) { openExplorationSession(context,user,LocationSourceType.PLEOS,state.policy.recordPrefix) }
             withContext(Dispatchers.Main) { restored.refresh() }
-            check(restored.summary.discoveredRegionCount==1 && restored.summary.exploredUnitCount==4)
-            check(restored.progress.totalXp==140L && restored.progress.level==2)
+            check(restored.regionDiscovered && restored.feature.cellExploration!!.unlockedCells(user).containsAll(expected))
+            if (!restored.usesServerProgress) check(restored.progress.totalXp==140L && restored.progress.level==2)
             withContext(Dispatchers.Main) { ExplorationTracking.stop(context) }
             withTimeout(5_000) { ExplorationTracking.state.first { !it.running } }
             val count=ExplorationTracking.state.value.receivedCount
