@@ -79,6 +79,12 @@ private object DetailPages {
     val recording=sdkState.running && sdkState.userId==userId
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.HOME)) }
     val page=stack.last()
+    val conquestCanRestore by produceState(false, page, conquest?.state, conquest?.pendingVisitCount) {
+        value=false
+        if (page==DetailPages.SETTINGS) value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.daehyundai.map.feature.conquest.data.ConquestAccountRestore.canRestore(java.io.File(context.filesDir,"conquest"))
+        }
+    }
     fun go(target:String) { if(target!=page) stack=stack+target }
     fun back() { if(stack.size>1) stack=stack.dropLast(1) }
     var landmarkId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -186,7 +192,8 @@ private object DetailPages {
                                     automatic=enabled;autoPrefs.edit().putBoolean("automatic",enabled).apply()
                                     if(enabled) requestTracking() else ExplorationTracking.stop(context)
                                 },automaticSupported=vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE)
-                                AccountSettings(userId,canRestoreAccount(recording,session?.hasLocalAchievements ?: true)) { session?.syncCloud() }
+                                if (!conquestCanRestore) Text("점령 기록 확인이 필요합니다. 팀 선택·기여·미처리 기록이 있으면 현재 계정에 이메일을 연결해 주세요.")
+                                AccountSettings(userId,conquestCanRestore && canRestoreAccount(recording,session?.hasLocalAchievements ?: true)) { session?.syncCloud() }
                             }
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,
                                 {sdkSelected=it},{scenario -> scope.launch { mockSession?.replay(scenario) }}) else Text("개발자 도구는 개발 빌드에서만 열 수 있어요.")

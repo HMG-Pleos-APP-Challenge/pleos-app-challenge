@@ -65,8 +65,10 @@ class ConquestSession private constructor(private val userId: String, private va
 
     private suspend fun update(action: () -> Unit) = change {
         savedState = withContext(Dispatchers.IO) {
-            action()
-            ConquestViewState(catalog, feature.getSummary(userId), feature.owners(), teams)
+            ConquestAccountRestore.withRecordAccess {
+                action()
+                ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams)
+            }
         }
     }
 

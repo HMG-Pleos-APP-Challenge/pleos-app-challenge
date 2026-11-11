@@ -81,9 +81,11 @@ class LocalConquestFeature(
 
     override suspend fun onRoadVisited(event: RoadVisited) { accept(event) }
 
-    override suspend fun getSummary(userId: String): ConquestSummary = synchronized(this) {
+    override suspend fun getSummary(userId: String): ConquestSummary = readSummary(userId)
+
+    @Synchronized fun readSummary(userId: String): ConquestSummary {
         advance()
-        settlement.summary(userId)
+        return settlement.summary(userId)
     }
 
     @Synchronized fun owners(): Map<String, String?> {
