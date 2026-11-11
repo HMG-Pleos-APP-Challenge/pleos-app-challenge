@@ -1,0 +1,6 @@
+OpenStreetMap road extract and derived Namyang road-cell database.
+Copyright OpenStreetMap contributors.
+This database is made available under the Open Database License (ODbL) v1.0.
+License URI and full legal text: https://opendatacommons.org/licenses/odbl/1-0/
+Plain text: https://opendatacommons.org/licenses/odbl/odbl-10.txt
+Attribution: https://www.openstreetmap.org/copyright

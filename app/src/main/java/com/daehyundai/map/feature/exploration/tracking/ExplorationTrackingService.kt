@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 data class TrackingSnapshot(val running:Boolean=false,val userId:String?=null,
-    val session:ExplorationSession?=null,val policy:PleosAccuracyPolicy=PleosAccuracyPolicy.UNVERIFIED,
+    val session:ExplorationSession?=null,val conquest:com.daehyundai.map.feature.conquest.ConquestSession?=null,val policy:PleosAccuracyPolicy=PleosAccuracyPolicy.UNVERIFIED,
     val message:String="탐험 기록 꺼짐",val voice:String="",val receivedCount:Int=0,val lastSampleTimestamp:Long?=null)
 
 object ExplorationTracking {
@@ -36,6 +36,7 @@ object ExplorationTracking {
 class ExplorationTrackingService:Service() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var job:Job?=null
+    private var activeConquest:com.daehyundai.map.feature.conquest.ConquestSession?=null
     private var automatic=false
     private var releaseVehicle:(()->Unit)?=null
     private var speaker:PleosUnlockSpeaker?=null
@@ -73,6 +74,11 @@ class ExplorationTrackingService:Service() {
                 val session=withContext(Dispatchers.IO) {
                     openExplorationSession(this@ExplorationTrackingService,userId,LocationSourceType.PLEOS,policy.recordPrefix)
                 }
+                val conquest=try {
+                    com.daehyundai.map.feature.conquest.ConquestSession.open(this@ExplorationTrackingService,userId,
+                        source=LocationSourceType.PLEOS,recordPrefix=policy.recordPrefix).also { it.resetInput();it.refresh() }
+                } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
+                activeConquest=conquest
                 session.refresh()
                 launch {
                     while(isActive) {
@@ -80,18 +86,22 @@ class ExplorationTrackingService:Service() {
                         delay(15_000)
                     }
                 }
-                ExplorationTracking.mutable.update { it.copy(session=session,policy=policy,message="SDK 위치 업데이트 대기") }
+                ExplorationTracking.mutable.update { it.copy(session=session,conquest=conquest,policy=policy,message="SDK 위치 업데이트 대기") }
                 var wasRecording=false
                 PleosLocationSource(userId,{ PleosSdkConnection(this@ExplorationTrackingService) },accuracyPolicy=policy)
                     .samples().collect { sample ->
                         if(!shouldRecord(automatic,VehicleSafety.state.value)) {
-                            if(wasRecording) session.acceptSdk(sample.copy(accuracyMeters=null))
+                            if(wasRecording) {
+                                val invalid=sample.copy(accuracyMeters=null)
+                                session.acceptSdk(invalid);conquest?.onSample(invalid)
+                            }
                             wasRecording=false
                             ExplorationTracking.mutable.update { it.copy(message="자동 기록 대기 · 차량 운행 상태가 확인되면 기록합니다") }
                             return@collect
                         }
                         wasRecording=true
                         val result=session.acceptSdk(sample)
+                        conquest?.onSample(sample)
                         announcements?.record(result)
                         ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status+" · "+session.cloudStatus) }
                     }
@@ -111,6 +121,7 @@ class ExplorationTrackingService:Service() {
             .setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null,"기록 중지",stop).build()).build()
     }
     override fun onDestroy() {
+        activeConquest?.resetInput();activeConquest=null
         announcements?.cancel(); speaker?.close(); scope.cancel();releaseVehicle?.invoke()
         ExplorationTracking.mutable.update { it.copy(running=false,message=if(it.message.startsWith("기록 오류")) it.message else "탐험 기록 중지") }
         stopForeground(STOP_FOREGROUND_REMOVE)

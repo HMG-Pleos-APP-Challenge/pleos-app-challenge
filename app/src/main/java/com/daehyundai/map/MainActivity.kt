@@ -20,9 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.daehyundai.map.core.data.PreviewConquestFeature
-import com.daehyundai.map.core.location.MockLocationSource
-import com.daehyundai.map.core.location.MockVisitDetector
 import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.conquest.ConquestMapScreen
 import com.daehyundai.map.feature.exploration.*
@@ -63,14 +60,17 @@ private object DetailPages {
     val autoPrefs=remember { context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE) }
     var automatic by remember { mutableStateOf(autoPrefs.getBoolean("automatic",false)) }
     val developerEnabled=context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE!=0
-    val conquest=remember { PreviewConquestFeature() }
     val (mockSession,mockError)=rememberExplorationSession(userId)
     val sdkState=rememberPleosExploration()
     val policy=remember(context) { pleosAccuracyPolicy(context) }
+    val (mockConquest,mockConquestError)=com.daehyundai.map.feature.conquest.rememberConquestSession(userId)
+    val (savedConquest,savedConquestError)=com.daehyundai.map.feature.conquest.rememberConquestSession(userId,LocationSourceType.PLEOS,policy.recordPrefix)
     val (savedSdkSession,sdkError)=rememberExplorationSession(userId,LocationSourceType.PLEOS,policy.recordPrefix)
     var sdkSelected by rememberSaveable { mutableStateOf(true) }
     val liveSession=sdkState.session.takeIf { sdkState.userId==userId }
     val session=if(sdkSelected) liveSession ?: savedSdkSession else mockSession
+    val conquest=if(sdkSelected) sdkState.conquest.takeIf { sdkState.userId==userId } ?: savedConquest else mockConquest
+    val conquestSummary=conquest?.state?.summary ?: ConquestSummary(userId,null,0,0,null)
     val summary=session?.summary ?: ExplorationSummary(userId,0,0,0,0,null)
     val recording=sdkState.running && sdkState.userId==userId
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.HOME)) }
@@ -103,11 +103,6 @@ private object DetailPages {
     }
     LaunchedEffect(userId,vehicleCapability) { if(automatic && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE) requestTracking() }
     val scope=rememberCoroutineScope()
-    val source=remember { MockLocationSource(userId) }
-    val detector=remember { MockVisitDetector() }
-    var revision by remember { mutableIntStateOf(0) }
-    var conquestSummary by remember { mutableStateOf(ConquestSummary(userId,null,0,0,null)) }
-    LaunchedEffect(revision) { conquestSummary=conquest.getSummary(userId) }
     BackHandler(stack.size>1) { back() }
     val title=when(page) {
         Routes.HOME -> "대현대여지도"
@@ -131,7 +126,6 @@ private object DetailPages {
                     Text(title,style=MaterialTheme.typography.headlineSmall,modifier=Modifier.weight(1f))
                     if(!sdkSelected && page!=Routes.CONQUEST_MAP) Text("모의 기록",style=MaterialTheme.typography.labelLarge)
                     if(recording) TextButton(onClick={go(DetailPages.REGION)}) { Text("● 탐험 기록 중") }
-                    if(page==Routes.HOME) OutlinedButton(onClick={go(Routes.PROFILE)}) { Text("프로필") }
                 }
                 HorizontalDivider()
                 key(page) {
@@ -146,14 +140,21 @@ private object DetailPages {
                                 "운행 중에는 탐험을 자동으로 기록해요. 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
                             if(recording) OutlinedButton(onClick={ExplorationTracking.stop(context)}) { Text("기록 중지") }
                         } else when(page) {
-                            Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},onReplay={
-                                // Keep the existing legacy conquest preview callback; no conquest logic is changed.
-                                scope.launch {
-                                    source.samples().collect { sample -> detector.onSample(sample).roads.forEach { conquest.onRoadVisited(it) } }
-                                    revision++
+                            Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},
+                                explorationPreview={ExplorationMapPreview(session)},
+                                conquestPreview={conquest?.state?.let { com.daehyundai.map.feature.conquest.ConquestMapPreview(it.catalog,it.owners,it.teamIds) }},conquestDemo=conquest?.demoLabel!=null)
+                            Routes.CONQUEST_MAP -> {
+                                val error=if(sdkSelected) savedConquestError else mockConquestError
+                                (error ?: conquest?.error)?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                                if(developerEnabled) {
+                                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                        FilterChip(selected=sdkSelected,onClick={sdkSelected=true},label={Text("SDK 점령 기록")})
+                                        FilterChip(selected=!sdkSelected,onClick={sdkSelected=false},label={Text("점령 시연·모의 기록")})
+                                    }
                                 }
-                            },explorationPreview={ExplorationMapPreview(session)})
-                            Routes.CONQUEST_MAP -> ConquestMapScreen(conquestSummary)
+                                ConquestMapScreen(conquestSummary,conquest?.state,
+                                    onSelectTeam={team -> scope.launch { conquest?.selectTeam(team) }},session=conquest)
+                            }
                             Routes.EXPLORATION_MAP -> ExplorationMapScreen(summary,session,{go(DetailPages.REGION)},{go(DetailPages.SOURCES)})
                             DetailPages.REGION -> RegionDetailScreen(session,recording,{requestTracking()},
                                 {ExplorationTracking.stop(context)},{go(DetailPages.CELLS)},{openLandmark(it)},
@@ -162,7 +163,8 @@ private object DetailPages {
                             DetailPages.CELL -> CellDetailScreen(session,if(cellCol!=null && cellRow!=null) CellIndex(cellCol!!,cellRow!!) else null)
                             DetailPages.LANDMARK -> LandmarkDetailScreen(session,landmarkId,{go(DetailPages.SOURCES)})
                             Routes.PROFILE -> ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
-                                {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)})
+                                {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)},
+                                conquestDemo=conquest?.demoLabel!=null,onConquest={go(Routes.CONQUEST_MAP)})
                             DetailPages.SETTINGS -> { PrototypeSettings(recording,developerEnabled,{ExplorationTracking.stop(context)},
                                 {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)},automatic,{ enabled ->
                                     automatic=enabled;autoPrefs.edit().putBoolean("automatic",enabled).apply()

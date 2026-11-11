@@ -22,7 +22,7 @@ private val ProfileMint = Color(0xFF9DE4CF)
 
 /** Presentation only: retain the shared progress contract, reward rules and navigation callbacks. */
 @Composable fun ProfileScreen(conquest:ConquestSummary,exploration:ExplorationSummary,progress:UserProgress,
-    landmarks:LandmarkCollectionSummary?=null,onRegion:()->Unit={},onCells:()->Unit={},onLandmark:(String)->Unit={},onSettings:()->Unit={}) {
+    landmarks:LandmarkCollectionSummary?=null,onRegion:()->Unit={},onCells:()->Unit={},onLandmark:(String)->Unit={},onSettings:()->Unit={},conquestDemo:Boolean=false,onConquest:()->Unit={}) {
     Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF203B36)),shape=RoundedCornerShape(24.dp),modifier=Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -63,6 +63,8 @@ private val ProfileMint = Color(0xFF9DE4CF)
             }
         }
     }
+    ProfileMetric("도로 점령"+(if(conquestDemo) " · 시연" else " · 기기 내 기록"),"${conquest.ownedRoadCount}구간",
+        "기여 ${conquest.contributionCount}회 · "+(conquest.teamId ?: "팀 미선택")+(if(conquestDemo) " · 저장되지 않음" else ""),onConquest)
     Text("나의 발자취",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
     Text("직접 발견하고 모은 기록이에요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF252D2B)),shape=RoundedCornerShape(20.dp)) {

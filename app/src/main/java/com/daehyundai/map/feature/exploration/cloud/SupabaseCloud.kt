@@ -99,6 +99,10 @@ class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud
                 check(it.readInt()==0) { "현재 기기의 기록은 이메일 연결로 보관해 주세요" }
             }
         }
+        val conquestFiles=java.io.File(appContext.filesDir,"conquest").listFiles().orEmpty()
+        check(conquestFiles.none { (it.name.startsWith("pleos-") || it.name.startsWith("pleos-emulator-")) && it.length()>0 }) {
+            "점령 기록이 있는 기기는 현재 계정에 이메일을 연결해 주세요"
+        }
         val cache=CloudCache(appContext)
         try { check(listOf("pleos","pleos-emulator").all { cache.count(localOwner,it)==0 }) { "미전송 기록을 먼저 동기화해 주세요" } }
         finally { cache.close() }

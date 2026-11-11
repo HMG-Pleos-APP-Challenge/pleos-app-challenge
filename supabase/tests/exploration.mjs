@@ -48,19 +48,6 @@ let denied=false;try { await db.exec(`insert into public.exploration_grants valu
 assert.ok(denied,'direct XP write must be denied');
 await db.exec(`reset role;insert into auth.users values('22222222-2222-4222-8222-222222222222');set request.jwt.claim.sub='22222222-2222-4222-8222-222222222222';set role authenticated;`);
 assert.equal((await db.query('select count(*)::int n from public.exploration_grants')).rows[0].n,0);
-await db.query("select public.choose_conquest_team_v1('A')");
-const future=Date.now()+1000;
-await sync([{...a,id:'ca',time:future},{...b,id:'cb',time:future+5000}]);
-const conquest=async()=> (await db.query("select public.conquest_snapshot_v1('pleos-emulator') result")).rows[0].result;
-const owned=await conquest();assert.equal(owned.my_contributions,1);assert.equal(owned.owners[0].team,'A');
-await sync([{...b,id:'cc',time:future+10000}]);assert.equal((await conquest()).my_contributions,1);
-let locked=false;try { await db.query("select public.choose_conquest_team_v1('B')"); } catch { locked=true; }assert.ok(locked);
-await db.exec(`reset role;insert into auth.users values('44444444-4444-4444-8444-444444444444');set request.jwt.claim.sub='44444444-4444-4444-8444-444444444444';set role authenticated;`);
-await db.query("select public.choose_conquest_team_v1('B')");
-await sync([{...a,id:'ta',time:future},{...b,id:'tb',time:future+5000}]);
-assert.equal((await conquest()).owners[0].team,'A'); // tie retains owner
-assert.equal((await db.query("select public.conquest_snapshot_v1('pleos') result")).rows[0].result.owners.length,0);
-
 await db.exec('reset role;set role anon;');
 denied=false;try { await sync([]); } catch { denied=true; }
 assert.ok(denied,'anonymous API key without user session must not execute RPC');

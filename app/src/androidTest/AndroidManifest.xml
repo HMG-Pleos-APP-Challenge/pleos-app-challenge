@@ -3,4 +3,5 @@
     <instrumentation android:name="com.daehyundai.map.SdkUnlockProbe"
         android:targetPackage="com.daehyundai.map" />
     <instrumentation android:name="com.daehyundai.map.CloudSyncProbe" android:targetPackage="com.daehyundai.map" />
+    <instrumentation android:name="com.daehyundai.map.IntegrationSmokeProbe" android:targetPackage="com.daehyundai.map" />
 </manifest>

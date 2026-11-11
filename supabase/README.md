@@ -1,3 +1,5 @@
+> 2026-11-11 통합 상태와 변경 사항은 [통합 검토 문서](../docs/integration-review.md)가 우선합니다. 아래는 단계별 구현 기록입니다.
+
 # Supabase backend v1
 
 ## Apply to qcbesfuohbvprpkwmlqu
