@@ -101,11 +101,12 @@ class LocalConquestFeature(
             .takeIf { it > ConquestTime.latestSettlement(record.startedUtcMs) }
         val owners = settlement.currentOwners()
         val today = ConquestTime.halfDay(now())
+        val explanations = settlement.lastExplanations()
         return segments.associateWith { segment ->
             val own = record.events.filter { it.userId == userId && it.roadSegmentId == segment }
             val periods = own.map { ConquestTime.halfDay(it.timestampUtcMs) }.filter { it.date == today.date }
             ConquestRoadDetail(owners[segment], completed, own.size, today.date, today.afternoon,
-                periods.any { !it.afternoon }, periods.any { it.afternoon })
+                periods.any { !it.afternoon }, periods.any { it.afternoon }, explanations[segment])
         }
     }
 
@@ -121,4 +122,5 @@ data class ConquestRoadDetail(
     val ownerTeamId: String?, val settledUtcMs: Long?, val contributionCount: Int,
     val dateKst: java.time.LocalDate, val currentAfternoon: Boolean,
     val morningAccepted: Boolean, val afternoonAccepted: Boolean,
+    val settlement: RoadSettlementExplanation?,
 )

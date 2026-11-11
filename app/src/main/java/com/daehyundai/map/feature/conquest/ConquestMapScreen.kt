@@ -65,6 +65,16 @@ import kotlin.math.*
                 if (detail == null) Text("상세 기록을 불러오는 중입니다.") else {
                     Text("현재 소유 팀: ${detail.ownerTeamId ?: "중립"}")
                     Text("마지막 정산: ${detail.settledUtcMs?.let(::formatSettlement) ?: "첫 정산 전"}")
+                    detail.settlement?.let { result ->
+                        HorizontalDivider()
+                        Text("마지막 정산 결과", style = MaterialTheme.typography.titleSmall)
+                        Text("집계 시작 포함: ${formatSettlement(result.timestampUtcMs - ConquestTime.WINDOW_MILLIS)}")
+                        Text("집계 종료 제외: ${formatSettlement(result.timestampUtcMs)}")
+                        state?.teamIds.orEmpty().forEach { team -> Text("$team · ${result.scores[team] ?: 0}점") }
+                        Text("${result.previousOwnerTeamId ?: "중립"} → ${result.ownerTeamId ?: "중립"}")
+                        Text(result.reason.label)
+                        Text("이 기기에서 인정된 기여 기준 · 진행 중인 다음 정산 점수는 포함하지 않습니다.")
+                    }
                     Text("이 방향 내 누적 인정 기여: ${detail.contributionCount}회")
                     HorizontalDivider()
                     Text("${detail.dateKst} · KST 오늘 기여", style = MaterialTheme.typography.titleSmall)

@@ -83,6 +83,7 @@ class LocalConquestFeatureTest {
         assertEquals(ContributionResult.ACCEPTED, game.accept(RoadVisited("a", "u", "ab", now, LocationSourceType.MOCK)))
         assertEquals(ContributionResult.ACCEPTED, game.accept(RoadVisited("b", "other", "ba", now, LocationSourceType.MOCK)))
         assertNull(game.roadDetails("u").getValue("ab").settledUtcMs)
+        assertNull(game.roadDetails("u").getValue("ab").settlement)
         assertEquals(1, game.roadDetails("u").getValue("ab").contributionCount)
         assertEquals(0, game.roadDetails("u").getValue("ba").contributionCount)
         now = start + day
@@ -91,6 +92,9 @@ class LocalConquestFeatureTest {
         assertEquals(now, details.getValue("ab").settledUtcMs)
         assertEquals("red", details.getValue("ab").ownerTeamId)
         assertEquals("blue", details.getValue("ba").ownerTeamId)
+        assertEquals(game.roadDetails("u"), details)
+        assertEquals(mapOf("red" to 1), details.getValue("ab").settlement!!.scores)
+        assertEquals(mapOf("blue" to 1), details.getValue("ba").settlement!!.scores)
         assertEquals(restored.readSummary("u").contributionCount, details.values.sumOf { it.contributionCount })
         now += day * 3
         assertNull(restored.roadDetails("u").getValue("ab").ownerTeamId)
