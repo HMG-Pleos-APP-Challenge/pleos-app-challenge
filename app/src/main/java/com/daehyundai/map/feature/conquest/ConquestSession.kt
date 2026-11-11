@@ -128,11 +128,13 @@ class ConquestSession private constructor(private val userId: String, private va
 }
 
 /** App-owned MOCK session with an isolated, debug-only demonstration. */
-@Composable fun rememberConquestSession(userId: String,source:LocationSourceType=LocationSourceType.MOCK,recordPrefix:String="mock"): Pair<ConquestSession?, String?> {
+@Composable fun rememberConquestSession(userId: String,source:LocationSourceType=LocationSourceType.MOCK,recordPrefix:String="mock",
+    retryToken:Int=0): Pair<ConquestSession?, String?> {
     val context = LocalContext.current.applicationContext
     var session by remember(userId,source,recordPrefix) { mutableStateOf<ConquestSession?>(null) }
     var error by remember(userId,source,recordPrefix) { mutableStateOf<String?>(null) }
-    LaunchedEffect(userId,source,recordPrefix) {
+    LaunchedEffect(userId,source,recordPrefix,retryToken) {
+        error = null
         try {
             session = ConquestSession.open(context, userId,source=source,recordPrefix=recordPrefix).also { it.refresh() }
         } catch (cancelled: CancellationException) {

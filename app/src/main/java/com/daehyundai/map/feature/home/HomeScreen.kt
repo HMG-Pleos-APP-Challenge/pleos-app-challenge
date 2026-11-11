@@ -10,7 +10,8 @@ import com.daehyundai.map.navigation.Routes
 
 /** Entrances only. Each feature supplies its existing map renderer, not a second map implementation. */
 @Composable fun HomeScreen(conquest:ConquestSummary,exploration:ExplorationSummary,onNavigate:(String)->Unit,
-    explorationPreview:@Composable ()->Unit={},conquestPreview:@Composable ()->Unit={},conquestDemo:Boolean=false) {
+    explorationPreview:@Composable ()->Unit={},conquestPreview:@Composable ()->Unit={},conquestDemo:Boolean=false,
+    conquestAvailable:Boolean=true,conquestMessage:String?=null) {
     Text("오늘은 어디를 탐험할까요?",style=MaterialTheme.typography.titleLarge)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun Exploration(modifier:Modifier) {
@@ -24,8 +25,11 @@ import com.daehyundai.map.navigation.Routes
         @Composable fun Conquest(modifier:Modifier) {
             Card(modifier) { Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("도로 점령",style=MaterialTheme.typography.headlineSmall)
-                conquestPreview()
-                Text("${if(conquestDemo) "시연 · 저장되지 않음" else "기기 내 기록"} · 기여 ${conquest.contributionCount}회 · 팀 점령 ${conquest.ownedRoadCount}구간")
+                if (conquestAvailable) {
+                    conquestPreview()
+                    Text("${if(conquestDemo) "시연 · 저장되지 않음" else "기기 내 기록"} · 기여 ${conquest.contributionCount}회 · 팀 점령 ${conquest.ownedRoadCount}구간")
+                }
+                conquestMessage?.let { Text(it) }
                 OutlinedButton(onClick={onNavigate(Routes.CONQUEST_MAP)},modifier=Modifier.fillMaxWidth()) { Text("점령 보기") }
             } }
         }
