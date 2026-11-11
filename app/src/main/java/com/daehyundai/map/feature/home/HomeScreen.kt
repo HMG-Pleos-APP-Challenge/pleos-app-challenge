@@ -11,14 +11,14 @@ import com.daehyundai.map.navigation.Routes
 /** Entrances only. Each feature supplies its existing map renderer, not a second map implementation. */
 @Composable fun HomeScreen(conquest:ConquestSummary,exploration:ExplorationSummary,onNavigate:(String)->Unit,
     explorationPreview:@Composable ()->Unit={},conquestPreview:@Composable ()->Unit={},conquestDemo:Boolean=false,
-    conquestAvailable:Boolean=true,conquestMessage:String?=null) {
+    conquestAvailable:Boolean=true,conquestMessage:String?=null,explorationDemo:Boolean=false) {
     Text("오늘은 어디를 탐험할까요?",style=MaterialTheme.typography.titleLarge)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun Exploration(modifier:Modifier) {
             Card(modifier) { Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("지역 탐험",style=MaterialTheme.typography.headlineSmall)
                 explorationPreview()
-                Text("남양읍 · 서버 확정 구역 ${exploration.exploredUnitCount} / ${exploration.totalExplorableUnitCount}")
+                Text("남양읍 · ${if(explorationDemo) "시연 탐험 구역" else "서버 확정 구역"} ${exploration.exploredUnitCount} / ${exploration.totalExplorableUnitCount}")
                 Button(onClick={onNavigate(Routes.EXPLORATION_MAP)},modifier=Modifier.fillMaxWidth()) { Text("탐험하기") }
             } }
         }

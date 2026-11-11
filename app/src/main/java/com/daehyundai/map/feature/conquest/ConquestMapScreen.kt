@@ -18,7 +18,8 @@ import kotlinx.coroutines.withContext
 import kotlin.math.*
 
 @Composable fun ConquestMapScreen(summary: ConquestSummary, state: ConquestViewState? = null,
-    onSelectTeam: ((String) -> Unit)? = null, session: ConquestSession? = null) {
+    onSelectTeam: ((String) -> Unit)? = null, session: ConquestSession? = null,
+    onReplayDemo: ((DemoRoute) -> Unit)? = null) {
     val context = LocalContext.current.applicationContext
     var baseCatalog by remember { mutableStateOf<ConquestCatalog?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
@@ -38,7 +39,7 @@ import kotlin.math.*
     if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     Text("남양성지로 · 테스트 도로 3구간 / 방향별 6구간")
-    if (session?.demoEnabled == true && state != null) ConquestDemoControls(session)
+    if (session?.demoEnabled == true && state != null) ConquestDemoControls(session, onReplayDemo)
     catalog?.let { ConquestMapPreview(it, state?.owners.orEmpty(), state?.teamIds.orEmpty()) }
     if (loadFailed) Text("도로 데이터를 불러오지 못했습니다.")
     if (state == null) {
@@ -63,13 +64,13 @@ import kotlin.math.*
         style = MaterialTheme.typography.labelSmall)
 }
 
-@Composable private fun ConquestDemoControls(session: ConquestSession) {
+@Composable private fun ConquestDemoControls(session: ConquestSession, onReplay: ((DemoRoute) -> Unit)?) {
     val scope = rememberCoroutineScope()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("남양읍 주행 시연", style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             DemoRoute.entries.forEach { route ->
-                OutlinedButton(onClick = { scope.launch { session.replayDemo(route) } },
+                OutlinedButton(onClick = { if (onReplay != null) onReplay(route) else scope.launch { session.replayDemo(route) } },
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) { Text(route.label) }
             }
         }

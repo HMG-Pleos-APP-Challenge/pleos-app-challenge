@@ -24,6 +24,8 @@ import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.conquest.ConquestMapScreen
 import com.daehyundai.map.feature.exploration.*
 import com.daehyundai.map.feature.exploration.domain.CellIndex
+import com.daehyundai.map.feature.exploration.domain.RegionBoundaryReader
+import com.daehyundai.map.feature.exploration.domain.RoadCellCatalogReader
 import com.daehyundai.map.feature.exploration.location.*
 import com.daehyundai.map.feature.exploration.tracking.ExplorationTracking
 import com.daehyundai.map.feature.home.HomeScreen
@@ -49,6 +51,9 @@ private object DetailPages {
     const val SOURCES="prototype/sources"
 }
 
+// Like the conquest memory demo, retain the paired session across activity recreation.
+private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>()
+
 @Composable private fun PrototypeApp(userId:String) {
     val context=LocalContext.current
     val vehicleCapability by com.daehyundai.map.feature.exploration.tracking.VehicleSafety.capability.collectAsState()
@@ -69,7 +74,8 @@ private object DetailPages {
     val (savedSdkSession,sdkError)=rememberExplorationSession(userId,LocationSourceType.PLEOS,policy.recordPrefix)
     var sdkSelected by rememberSaveable { mutableStateOf(true) }
     val liveSession=sdkState.session.takeIf { sdkState.userId==userId }
-    val session=if(sdkSelected) liveSession ?: savedSdkSession else mockSession
+    val sharedDriveActive=!sdkSelected && mockConquest?.demoLabel!=null && sharedDriveSessions[userId]!=null
+    val session=if(sdkSelected) liveSession ?: savedSdkSession else if(sharedDriveActive) sharedDriveSessions[userId] else mockSession
     val conquest=if(sdkSelected) sdkState.conquest.takeIf { sdkState.userId==userId } ?: savedConquest else mockConquest
     val conquestSummary=conquest?.state?.summary ?: ConquestSummary(userId,null,0,0,null)
     val conquestAvailable=conquest?.state!=null
@@ -113,6 +119,28 @@ private object DetailPages {
     }
     LaunchedEffect(userId,vehicleCapability) { if(automatic && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.AVAILABLE) requestTracking() }
     val scope=rememberCoroutineScope()
+    var demoError by remember { mutableStateOf<String?>(null) }
+    var demoBusy by remember { mutableStateOf(false) }
+    fun replaySharedDrive(route:com.daehyundai.map.feature.conquest.DemoRoute) {
+        if (demoBusy) return
+        demoBusy=true
+        scope.launch {
+            try {
+                val demo=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val boundary=context.assets.open("exploration/namyang.boundary").reader().use(RegionBoundaryReader::read)
+                    val roads=context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
+                    createDemoExploration(userId,boundary,roads)
+                }
+                val replayed=mockConquest?.replayDemo(route) { demo.feature.onLocation(it);demo.refresh(false) }==true
+                if(replayed) {
+                    sharedDriveSessions[userId]=demo
+                    demoError=null
+                }
+            } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch(_:Exception) { demoError="통합 시연 데이터를 불러오지 못했습니다. 다시 시도해 주세요."
+            } finally { demoBusy=false }
+        }
+    }
     BackHandler(stack.size>1) { back() }
     val title=when(page) {
         Routes.HOME -> "대현대여지도"
@@ -143,6 +171,8 @@ private object DetailPages {
                         verticalArrangement=Arrangement.spacedBy(16.dp)) {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
+                        if(sharedDriveActive) Text("탐험·점령 통합 시연 · 메모리 기록 · 저장되지 않음 · 탐험 XP/명소 시연 제외")
+                        demoError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
                         if (sdkSelected && sdkState.userId==userId) {
                             sdkState.explorationError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
                             sdkState.conquestError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
@@ -163,7 +193,7 @@ private object DetailPages {
                             Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},
                                 explorationPreview={ExplorationMapPreview(session)},
                                 conquestPreview={conquest?.state?.let { com.daehyundai.map.feature.conquest.ConquestMapPreview(it.catalog,it.owners,it.teamIds) }},conquestDemo=conquest?.demoLabel!=null,
-                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage)
+                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage,explorationDemo=sharedDriveActive)
                             Routes.CONQUEST_MAP -> {
                                 val error=conquestLoadError
                                 (error ?: conquest?.error)?.let { Text(it,color=MaterialTheme.colorScheme.error) }
@@ -174,7 +204,8 @@ private object DetailPages {
                                     }
                                 }
                                 ConquestMapScreen(conquestSummary,conquest?.state,
-                                    onSelectTeam={team -> scope.launch { conquest?.selectTeam(team) }},session=conquest)
+                                    onSelectTeam={team -> scope.launch { conquest?.selectTeam(team) }},session=conquest,
+                                    onReplayDemo={replaySharedDrive(it)})
                             }
                             Routes.EXPLORATION_MAP -> ExplorationMapScreen(summary,session,{go(DetailPages.REGION)},{go(DetailPages.SOURCES)})
                             DetailPages.REGION -> RegionDetailScreen(session,recording,{requestTracking()},

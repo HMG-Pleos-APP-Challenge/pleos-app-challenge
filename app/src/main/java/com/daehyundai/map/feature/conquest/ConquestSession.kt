@@ -72,16 +72,21 @@ class ConquestSession private constructor(private val userId: String, private va
         }
     }
 
-    suspend fun replayDemo(route: DemoRoute) = change {
+    suspend fun replayDemo(route: DemoRoute, onSample: suspend (LocationSample) -> Unit = {}): Boolean {
+        var completed = false
+        change {
         if (!demoEnabled) return@change
         val (nextDemo, snapshot) = withContext(Dispatchers.IO) {
             val next = ConquestDemo(userId, catalog, teams, feature.teamOf(userId) ?: teams.first())
-            next to next.replay(route)
+            next to next.replay(route, onSample)
         }
         demo = nextDemo
         demoState = snapshot
         demoLabel = route.label
         demoSettled = false
+        completed = true
+        }
+        return completed
     }
 
     suspend fun settleDemo() = change {

@@ -35,7 +35,7 @@ internal class ConquestDemo(
 
     init { check(pipeline.selectTeam(userId, teamId)) }
 
-    suspend fun replay(route: DemoRoute): ConquestViewState {
+    suspend fun replay(route: DemoRoute, onSample: suspend (LocationSample) -> Unit = {}): ConquestViewState {
         val road = catalog.roads.first()
         val points = road.points.zipWithNext().flatMap { (a, b) ->
             val steps = ceil(road.distance(a, b) / 12.0).toInt().coerceAtLeast(1)
@@ -59,8 +59,10 @@ internal class ConquestDemo(
         }
         path.forEachIndexed { index, point ->
             now += 2_000
-            pipeline.onSample(LocationSample("namyang-demo-$index", userId, point.latitude,
-                point.longitude, now, 3f, LocationSourceType.MOCK))
+            val sample = LocationSample("namyang-demo-$index", userId, point.latitude,
+                point.longitude, now, 3f, LocationSourceType.MOCK)
+            pipeline.onSample(sample)
+            onSample(sample)
         }
         return snapshot()
     }
