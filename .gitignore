@@ -33,3 +33,9 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Developer-only Python tool cache
+tools/__pycache__/
+
+# Local backend test dependencies
+supabase/node_modules/

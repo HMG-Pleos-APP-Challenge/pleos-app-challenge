@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name="com.daehyundai.map.SdkUnlockProbe"
+        android:targetPackage="com.daehyundai.map" />
+    <instrumentation android:name="com.daehyundai.map.CloudSyncProbe" android:targetPackage="com.daehyundai.map" />
+    <instrumentation android:name="com.daehyundai.map.IntegrationSmokeProbe" android:targetPackage="com.daehyundai.map" />
+</manifest>

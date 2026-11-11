@@ -1,0 +1,1 @@
+-- Retired catalog batch; no statements.

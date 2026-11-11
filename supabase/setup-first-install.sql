@@ -1,0 +1,3 @@
+-- Retired combined script (SQL Editor size limit).
+-- Fresh install: sql-editor/00-schema.sql, 01-catalog.sql, 02-catalog.sql separately.
+-- Existing project: grid500-upgrade/00-upgrade.sql, 01-catalog.sql, 02-catalog.sql separately.
