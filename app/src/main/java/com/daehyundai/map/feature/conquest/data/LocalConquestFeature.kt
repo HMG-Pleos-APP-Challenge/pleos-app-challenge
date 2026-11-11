@@ -93,6 +93,19 @@ class LocalConquestFeature(
         return settlement.currentOwners()
     }
 
+    /** Display accepted contributions without changing shared contracts or storage. */
+    @Synchronized fun roadDetails(userId: String): Map<String, ConquestRoadDetail> {
+        require(userId.isNotBlank())
+        advance()
+        val completed = ConquestTime.latestSettlement(record.observedUtcMs)
+            .takeIf { it > ConquestTime.latestSettlement(record.startedUtcMs) }
+        val owners = settlement.currentOwners()
+        return segments.associateWith { segment ->
+            ConquestRoadDetail(owners[segment], completed,
+                record.events.count { it.userId == userId && it.roadSegmentId == segment })
+        }
+    }
+
     private fun advance() {
         val now = now()
         if (ConquestTime.latestSettlement(now) > ConquestTime.latestSettlement(record.observedUtcMs)) {
@@ -100,3 +113,5 @@ class LocalConquestFeature(
         }
     }
 }
+
+data class ConquestRoadDetail(val ownerTeamId: String?, val settledUtcMs: Long?, val contributionCount: Int)

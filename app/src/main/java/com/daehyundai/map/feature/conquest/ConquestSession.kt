@@ -13,7 +13,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class ConquestViewState(val catalog: ConquestCatalog, val summary: ConquestSummary,
-    val owners: Map<String, String?>, val teamIds: List<String>)
+    val owners: Map<String, String?>, val teamIds: List<String>,
+    val roadDetails: Map<String, ConquestRoadDetail> = emptyMap())
 
 /** One session at the app composition root. Screens receive snapshots, not direct access to storage. */
 class ConquestSession private constructor(private val userId: String, private val catalog: ConquestCatalog,
@@ -67,7 +68,7 @@ class ConquestSession private constructor(private val userId: String, private va
         savedState = withContext(Dispatchers.IO) {
             ConquestAccountRestore.withRecordAccess {
                 action()
-                ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams)
+                ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
             }
         }
     }

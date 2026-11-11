@@ -5,9 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.daehyundai.map.core.model.ConquestSummary
@@ -40,7 +45,32 @@ import kotlin.math.*
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     Text("남양성지로 · 테스트 도로 3구간 / 방향별 6구간")
     if (session?.demoEnabled == true && state != null) ConquestDemoControls(session, onReplayDemo)
-    catalog?.let { ConquestMapPreview(it, state?.owners.orEmpty(), state?.teamIds.orEmpty()) }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    catalog?.let { roads ->
+        val selected = selectedId?.takeIf { id -> roads.roads.any { it.id == id } } ?: roads.roads.first().id
+        ConquestMapPreview(roads, state?.owners.orEmpty(), state?.teamIds.orEmpty(), selected)
+        Text("방향별 구간 선택", style = MaterialTheme.typography.titleMedium)
+        roads.roads.forEach { road ->
+            OutlinedButton(onClick = { selectedId = road.id }, modifier = Modifier.fillMaxWidth()) {
+                Text("${if (road.id == selected) "선택 · " else ""}${roadLabel(roads, road)} · ${state?.owners?.get(road.id) ?: "중립"}")
+            }
+        }
+        val road = roads.roads.first { it.id == selected }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(roadLabel(roads, road), style = MaterialTheme.typography.titleMedium)
+                Text("${road.name} · 약 ${road.lengthMeters.toInt()}m")
+                Text("교차로 노드 ${road.fromNode} → ${road.toNode}")
+                val detail = state?.roadDetails?.get(selected)
+                if (detail == null) Text("상세 기록을 불러오는 중입니다.") else {
+                    Text("현재 소유 팀: ${detail.ownerTeamId ?: "중립"}")
+                    Text("마지막 정산: ${detail.settledUtcMs?.let(::formatSettlement) ?: "첫 정산 전"}")
+                    Text("이 방향 내 누적 인정 기여: ${detail.contributionCount}회")
+                    Text("완주 기여 인정 후, 소유 결과는 낮 12시 정산에 반영됩니다.")
+                }
+            }
+        }
+    }
     if (loadFailed) Text("도로 데이터를 불러오지 못했습니다.")
     if (state == null) {
         Text("도로 데이터 미리보기 · 점령 기록 연결 전")
@@ -91,7 +121,8 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
     return if (index < 0) Color(0xFF879590) else colors[index % colors.size]
 }
 
-@Composable fun ConquestMapPreview(catalog: ConquestCatalog, owners: Map<String, String?>, teams: List<String>) {
+@Composable fun ConquestMapPreview(catalog: ConquestCatalog, owners: Map<String, String?>, teams: List<String>,
+    selectedRoadId: String? = null) {
     val points = catalog.roads.flatMap { it.points }
     val origin = points.first()
     val xScale = cos(Math.toRadians(origin.latitude))
@@ -112,10 +143,21 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
                 val length = delta.getDistance()
                 if (length > 0) {
                     val normal = Offset(-delta.y / length, delta.x / length) * 6.dp.toPx()
+                    if (road.id == selectedRoadId) drawLine(Color.White, from + normal, to + normal, 9.dp.toPx())
                     drawLine(color, from + normal, to + normal, strokeWidth = 4.dp.toPx())
                     if (index == (road.points.size - 2) / 2) {
                         val direction = delta / length
                         val middle = (from + to) / 2f + normal
+                        val labelPosition = middle + normal * 3f
+                        val label = roadLabel(catalog, road)
+                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                            this.color = android.graphics.Color.WHITE
+                            textSize = 11.dp.toPx()
+                            textAlign = android.graphics.Paint.Align.CENTER
+                        }
+                        val halfWidth = paint.measureText(label) / 2
+                        val labelX = labelPosition.x.coerceIn(halfWidth, max(halfWidth, size.width - halfWidth))
+                        drawContext.canvas.nativeCanvas.drawText(label, labelX, labelPosition.y, paint)
                         val wing = Offset(-direction.y, direction.x) * 4.dp.toPx()
                         drawLine(color, middle, middle - direction * 9.dp.toPx() + wing, 3.dp.toPx())
                         drawLine(color, middle, middle - direction * 9.dp.toPx() - wing, 3.dp.toPx())
@@ -125,3 +167,14 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
         }
     }
 }
+
+private fun roadLabel(catalog: ConquestCatalog, road: DirectedRoad): String {
+    fun key(item: DirectedRoad) = listOf(item.fromNode, item.toNode).sorted().joinToString(":")
+    val groups = catalog.roads.map(::key).distinct()
+    val group = groups.indexOf(key(road)) + 1
+    val forward = catalog.roads.first { key(it) == key(road) }
+    return "구간 $group · ${if (forward.id == road.id) "A → B" else "B → A"}"
+}
+
+private fun formatSettlement(timestamp: Long): String = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'KST'")
+    .withZone(ZoneId.of("Asia/Seoul")).format(Instant.ofEpochMilli(timestamp))

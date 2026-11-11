@@ -19,6 +19,30 @@ class LocalConquestFeatureTest {
     private fun feature(store: ConquestStore, clock: () -> Long, source: LocationSourceType = LocationSourceType.MOCK) =
         LocalConquestFeature(setOf("red", "blue", "green"), setOf("ab", "ba"), "roads-v1", source, store, clock)
 
+    @Test fun directionDetailsRetainUserCountsAndCompletedNoonAfterRestart() {
+        var now = start + 1000
+        val store = FileConquestStore(File(folder.root, "details.bin"))
+        val game = feature(store, { now })
+        game.selectTeam("u", "red")
+        game.selectTeam("other", "blue")
+        now++
+        assertEquals(ContributionResult.ACCEPTED, game.accept(RoadVisited("a", "u", "ab", now, LocationSourceType.MOCK)))
+        assertEquals(ContributionResult.ACCEPTED, game.accept(RoadVisited("b", "other", "ba", now, LocationSourceType.MOCK)))
+        assertNull(game.roadDetails("u").getValue("ab").settledUtcMs)
+        assertEquals(1, game.roadDetails("u").getValue("ab").contributionCount)
+        assertEquals(0, game.roadDetails("u").getValue("ba").contributionCount)
+        now = start + day
+        val restored = feature(store, { now })
+        val details = restored.roadDetails("u")
+        assertEquals(now, details.getValue("ab").settledUtcMs)
+        assertEquals("red", details.getValue("ab").ownerTeamId)
+        assertEquals("blue", details.getValue("ba").ownerTeamId)
+        assertEquals(restored.readSummary("u").contributionCount, details.values.sumOf { it.contributionCount })
+        now += day * 3
+        assertNull(restored.roadDetails("u").getValue("ab").ownerTeamId)
+        assertEquals(1, restored.roadDetails("u").getValue("ab").contributionCount)
+    }
+
     @Test fun contractSurvivesRestartAndRecoversMissedNoonsWithoutDuplicateContribution() = runTest {
         var now = start
         val store = FileConquestStore(File(folder.root, "mock.bin"))

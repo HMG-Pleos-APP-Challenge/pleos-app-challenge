@@ -72,5 +72,5 @@ internal class ConquestDemo(
         return snapshot()
     }
 
-    private suspend fun snapshot() = ConquestViewState(catalog, feature.getSummary(userId), feature.owners(), teams)
+    private suspend fun snapshot() = ConquestViewState(catalog, feature.getSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
 }
