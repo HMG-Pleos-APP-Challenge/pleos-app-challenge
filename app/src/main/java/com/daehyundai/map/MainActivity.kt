@@ -125,12 +125,15 @@ private object DetailPages {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    val recordingStatus = when {
-        recording && sdkState.lastSampleTimestamp != null -> "탐험 기록 중 · 화면 밖에서도 기록해요."
-        recording -> "위치 신호를 기다리고 있어요."
-        permissionMessage.isNotEmpty() -> permissionMessage
-        else -> sdkState.message
+    val statusClock by produceState(System.currentTimeMillis()) {
+        while(true) {
+            value=System.currentTimeMillis()
+            kotlinx.coroutines.delay(5_000)
+        }
     }
+    val recordingStatus = com.daehyundai.map.feature.exploration.tracking.recordingStatus(
+        recording,sdkState.lastSampleTimestamp,
+        permissionMessage.ifEmpty { sdkState.message },statusClock)
     val scope=rememberCoroutineScope()
     BackHandler(stack.size>1) { back() }
     val title=when(page) {

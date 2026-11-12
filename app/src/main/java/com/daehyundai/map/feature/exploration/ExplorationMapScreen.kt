@@ -149,8 +149,8 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
 
 @Composable private fun ExplorationLegend(serverProgress:Boolean) {
     Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        if(serverProgress) Text("■ 동기화 대기",color=Color(0xFFF4A261),style=MaterialTheme.typography.labelLarge)
-        Text(if(serverProgress) "■ 서버 확정" else "■ 탐험한 구역",color=Color(0xFF62E4AF),style=MaterialTheme.typography.labelLarge)
+        if(serverProgress) Text("╱ 동기화 대기",color=Color(0xFFF4A261),style=MaterialTheme.typography.labelLarge)
+        Text(if(serverProgress) "● 서버 확정" else "● 탐험한 구역",color=Color(0xFF62E4AF),style=MaterialTheme.typography.labelLarge)
         Text("□ 미탐험 구역",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelLarge)
         Text("● 명소",color=Color(0xFFC3A9F0),style=MaterialTheme.typography.labelLarge)
     }
@@ -260,6 +260,11 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
                     val at=screen(MeterPoint(cell.col*grid.sizeMeters,(cell.row+1)*grid.sizeMeters))
                     val length=(grid.sizeMeters*scale).toFloat()
                     drawRect(if(cell in session.pendingCells) Color(0xFFF4A261) else if(cell in session.unlockedCells) Color(0xFF62E4AF) else Color(0xFF55615E),at,Size(length,length))
+                    if(cell in session.pendingCells) {
+                        drawLine(Color.White.copy(alpha=.8f),at+Offset(0f,length),at+Offset(length,0f),1.5.dp.toPx())
+                    } else if(cell in session.unlockedCells) {
+                        drawCircle(Color(0xFF143A2C),minOf(2.dp.toPx(),length/7),at+Offset(length/2,length/2))
+                    }
                     if(cell==highlight) drawRect(Color.White,at,Size(length,length),style=Stroke(2.dp.toPx()))
                 }
                 data.roads.forEach { road ->

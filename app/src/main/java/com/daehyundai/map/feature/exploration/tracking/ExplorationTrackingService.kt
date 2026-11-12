@@ -103,17 +103,22 @@ class ExplorationTrackingService:Service() {
                         true
                     }.collect { sample ->
                         ExplorationTracking.sampleAccess.withLock {
-                            val result=session.acceptSdk(sample)
-                            // Exploration remains continuous. Conquest retains its previous vehicle-state gate.
-                            if (recordConquest && shouldRecord(automatic,VehicleSafety.state.value)) {
-                                conquest?.onSample(sample)
-                                wasConquestRecording=true
-                            } else {
-                                if(wasConquestRecording) conquest?.onSample(sample.copy(accuracyMeters=null))
-                                wasConquestRecording=false
+                            val delivery=deliverLocationSample(sample,session::acceptSdk) { fix ->
+                                if (recordConquest && shouldRecord(automatic,VehicleSafety.state.value)) {
+                                    conquest?.onSample(fix)
+                                    wasConquestRecording=true
+                                } else {
+                                    if(wasConquestRecording) conquest?.onSample(fix.copy(accuracyMeters=null))
+                                    wasConquestRecording=false
+                                }
                             }
-                            announcements?.record(result)
-                            ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=session.status+" · "+session.cloudStatus) }
+                            delivery.exploration.getOrNull()?.let { announcements?.record(it) }
+                            val message = when {
+                                delivery.exploration.isFailure -> "탐험 저장 오류 · 위치 수신은 계속돼요. 저장 공간을 확인해 주세요."
+                                delivery.conquest.isFailure -> "탐험 기록 중 · 점령 입력 처리 오류"
+                                else -> session.status+" · "+session.cloudStatus
+                            }
+                            ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=message) }
                         }
                     }
             } catch(cancelled:CancellationException) { throw cancelled

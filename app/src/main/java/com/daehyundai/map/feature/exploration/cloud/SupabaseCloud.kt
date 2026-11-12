@@ -37,12 +37,14 @@ private class SessionVault(context:Context,namespace:String="") {
     }
 }
 
-class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud {
+class SupabaseCloud(context:Context,sessionNamespace:String="",
+    private val requestOverride:((String,JSONObject,String?,String)->String)?=null):ExplorationCloud {
     private val appContext=context.applicationContext
     private val vault=SessionVault(context,sessionNamespace)
     private val endpoint=BuildConfig.SUPABASE_URL.trimEnd('/')
     private val key=BuildConfig.SUPABASE_PUBLISHABLE_KEY
     private fun request(path:String,body:JSONObject,token:String?=null,method:String="POST"):String {
+        requestOverride?.let { return it(path,body,token,method) }
         require(endpoint.startsWith("https://"))
         val connection=URL(endpoint+path).openConnection() as HttpURLConnection
         try {
