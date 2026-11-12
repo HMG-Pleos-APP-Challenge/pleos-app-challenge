@@ -20,7 +20,9 @@ internal class ConquestDemo(
     private val catalog: ConquestCatalog,
     private val teams: List<String>,
     private val teamId: String,
+    roadId: String = "osm:way:55055096:v24:414929156:4641680981",
 ) {
+    private val demoRoad = catalog.roads.firstOrNull { it.id == roadId } ?: catalog.roads.first()
     private val start = Instant.parse("2026-11-11T00:00:00Z").toEpochMilli()
     private val noon = Instant.parse("2026-11-11T03:00:00Z").toEpochMilli()
     private var now = start
@@ -43,7 +45,7 @@ internal class ConquestDemo(
 
     suspend fun replay(route: DemoRoute, onSample: suspend (LocationSample) -> Unit = {}): ConquestViewState {
         completeRoute = route == DemoRoute.COMPLETE
-        val road = catalog.roads.first()
+        val road = demoRoad
         val points = road.points.zipWithNext().flatMap { (a, b) ->
             val steps = ceil(road.distance(a, b) / 12.0).toInt().coerceAtLeast(1)
             (0 until steps).map { step ->
@@ -105,7 +107,7 @@ internal class ConquestDemo(
         repeat(2) { index ->
             val participant = "competition:$userId:$group:$index"
             check(feature.selectTeam(participant, team))
-            check(feature.accept(RoadVisited("$participant:$now", participant, catalog.roads.first().id,
+            check(feature.accept(RoadVisited("$participant:$now", participant, demoRoad.id,
                 now, LocationSourceType.MOCK)) == com.daehyundai.map.feature.conquest.domain.ContributionResult.ACCEPTED)
         }
     }

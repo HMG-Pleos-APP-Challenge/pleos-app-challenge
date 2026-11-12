@@ -10,6 +10,13 @@ class ExpandedConquestCatalogTest {
     private fun expanded() = File("../docs/data/namyang-conquest-full-v1.segments")
         .reader().use(ConquestCatalogReader::read)
 
+    @Test fun runtimeAssetMatchesValidatedExpansion() {
+        val runtime = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+        val expected = expanded()
+        assertEquals(expected.version, runtime.version)
+        assertEquals(expected.roads.map { it.id to it.points }, runtime.roads.map { it.id to it.points })
+    }
+
     @Test fun productionReaderAcceptsAllExpandedDirections() {
         val catalog = expanded()
         assertEquals("namyang-conquest-osm-20261108-full-v1", catalog.version)
@@ -21,7 +28,7 @@ class ExpandedConquestCatalogTest {
     }
 
     @Test fun legacyDirectionalIdentityAndGeometryArePreserved() {
-        val legacy = File("src/main/assets/conquest/namyang.segments")
+        val legacy = File("src/main/assets/conquest/namyang-legacy.segments")
             .reader().use(ConquestCatalogReader::read)
         val next = expanded().roads.associateBy { it.id }
         assertEquals(6, legacy.roads.size)

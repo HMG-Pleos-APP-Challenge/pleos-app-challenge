@@ -58,7 +58,7 @@ class ConquestLocationPipelineTest {
         assertEquals(ContributionResult.LATE, restored.lastResult?.result)
         assertEquals(0, game.getSummary("u").contributionCount)
     }
-    private val catalog = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+    private val catalog = File("src/main/assets/conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
     private val base = Instant.parse("2026-11-10T04:00:00Z").toEpochMilli()
     private class MemoryStore : ConquestStore {
         var value: ConquestRecord? = null

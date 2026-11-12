@@ -14,7 +14,7 @@ import org.junit.rules.TemporaryFolder
 /** Real catalog coordinates through detection, persisted contributions, settlement and display queries. */
 class ConquestGameFlowTest {
     @get:Rule val folder = TemporaryFolder()
-    private val catalog = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+    private val catalog = File("src/main/assets/conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
 
     @Test fun directionalCompetitionSurvivesReplayRestartTieAndExpiry() = runTest {
         val start = Instant.parse("2026-11-11T00:00:00Z").toEpochMilli()
@@ -34,7 +34,7 @@ class ConquestGameFlowTest {
             val roads = if (reverse) ConquestCatalog(catalog.version, catalog.roads.drop(1) + catalog.roads.first()) else catalog
             val trace = mutableListOf<LocationSample>()
             var firstSample = true
-            ConquestDemo(user, roads, teams, if (user.startsWith("r")) "red" else "blue")
+            ConquestDemo(user, roads, teams, if (user.startsWith("r")) "red" else "blue", roadId = roads.roads.first().id)
                 .replay(DemoRoute.COMPLETE) { original ->
                     val sample = original.copy(eventId = "$user:$offset:$reverse:${original.eventId}",
                         timestampUtcMs = original.timestampUtcMs + offset)

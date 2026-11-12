@@ -149,7 +149,10 @@ class ConquestSession private constructor(private val userId: String, private va
             require(userId.isNotBlank() && teams.isNotEmpty() && teams.distinct().size == teams.size)
             val catalog = context.assets.open("conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
             val prefix=if(source==LocationSourceType.MOCK) "mock" else recordPrefix.also { require(it in setOf("pleos","pleos-emulator")) }
-            val file=File(context.filesDir,"conquest/$prefix-${catalog.version}.bin")
+            val legacy = context.assets.open("conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
+            val bundle = ConquestCatalogMigration.prepare(File(context.filesDir, "conquest"), prefix,
+                userId, teams.toSet(), source, legacy, catalog, allowProgress = true)
+            val file = bundle.record
             sessions[file.canonicalPath]?.let {
                 require(it.userId==userId && it.teams==teams && it.sourceType==source) { "점령 파일 세션의 사용자·팀·출처 충돌" }
                 return@withContext it

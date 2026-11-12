@@ -14,7 +14,8 @@ object ConquestCatalogMigration {
     data class Bundle(val record: File, val pending: File)
 
     fun prepare(directory: File, prefix: String, userId: String, teams: Set<String>,
-        source: LocationSourceType, old: ConquestCatalog, next: ConquestCatalog): Bundle =
+        source: LocationSourceType, old: ConquestCatalog, next: ConquestCatalog,
+        allowProgress: Boolean = false): Bundle =
         ConquestAccountRestore.withRecordAccess {
             require(prefix in if (source == LocationSourceType.MOCK) setOf("mock") else setOf("pleos", "pleos-emulator"))
             require(userId.isNotBlank() && old.version != next.version)
@@ -45,8 +46,15 @@ object ConquestCatalogMigration {
                 check(File(target, "receipt").readText() == receipt) { "Migration source changed or target conflict" }
                 val result = bundle(target)
                 check(result.pending.isFile && (record == null || result.record.isFile)) { "Incomplete prepared bundle" }
-                check(FileConquestStore(result.record).read() == record?.copy(datasetVersion = next.version))
-                check(FilePendingVisitsStore(result.pending, next.version, source, userId).read() == pending)
+                val current = FileConquestStore(result.record).read()
+                if (allowProgress) {
+                    require(current == null || (current.teams.all { it.userId == userId } && current.events.all { it.userId == userId }))
+                    LocalConquestFeature(teams, nextRoads.keys, next.version, source, FileConquestStore(result.record))
+                    require(FilePendingVisitsStore(result.pending, next.version, source, userId).read().all { it.roadSegmentId in nextRoads })
+                } else {
+                    check(current == record?.copy(datasetVersion = next.version))
+                    check(FilePendingVisitsStore(result.pending, next.version, source, userId).read() == pending)
+                }
                 return@withRecordAccess result
             }
             check(directory.isDirectory || directory.mkdirs())

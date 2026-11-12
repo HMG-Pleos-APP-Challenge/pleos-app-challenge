@@ -11,7 +11,7 @@ import org.junit.rules.TemporaryFolder
 
 class ConquestCatalogMigrationTest {
     @get:Rule val folder = TemporaryFolder()
-    private val old = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+    private val old = File("src/main/assets/conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
     private val next = File("../docs/data/namyang-conquest-full-v1.segments").reader().use(ConquestCatalogReader::read)
     private val source = LocationSourceType.MOCK
     private val base = java.time.Instant.parse("2026-11-11T00:00:00Z").toEpochMilli()
@@ -95,5 +95,27 @@ class ConquestCatalogMigrationTest {
             .write(listOf(event("unknown").copy(roadSegmentId = "not-in-catalog")))
         try { migrate(); fail("Unknown pending road must fail") } catch (_: IllegalArgumentException) { }
         assertFalse(folder.root.listFiles()!!.any { it.name.startsWith("prepared-") })
+    }
+
+    @Test fun activeBundleReopensAfterNewProgressWithoutResettingIt() {
+        seed()
+        val result = migrate()
+        val store = FileConquestStore(result.record)
+        store.write(store.read()!!.copy(observedUtcMs = base + 500))
+        val reopened = ConquestCatalogMigration.prepare(folder.root, "mock", "u", setOf("red"),
+            source, old, next, allowProgress = true)
+        assertEquals(result, reopened)
+        assertEquals(base + 500, FileConquestStore(reopened.record).read()!!.observedUtcMs)
+        assertEquals(base + 200, FileConquestStore(legacy()).read()!!.observedUtcMs)
+    }
+
+    @Test fun freshPreparedRealAccountAllowsRestoreUntilTeamIsSelected() {
+        val bundle = ConquestCatalogMigration.prepare(folder.root, "pleos", "u", setOf("red"),
+            LocationSourceType.PLEOS, old, next, allowProgress = true)
+        assertTrue(ConquestAccountRestore.canRestore(folder.root))
+        val feature = LocalConquestFeature(setOf("red"), next.roads.map { it.id }.toSet(), next.version,
+            LocationSourceType.PLEOS, FileConquestStore(bundle.record), { base + 100 })
+        assertTrue(feature.selectTeam("u", "red"))
+        assertFalse(ConquestAccountRestore.canRestore(folder.root))
     }
 }

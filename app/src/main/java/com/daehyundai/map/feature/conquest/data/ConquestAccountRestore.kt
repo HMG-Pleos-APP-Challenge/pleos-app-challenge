@@ -21,6 +21,17 @@ object ConquestAccountRestore {
     private fun recordsAreEmpty(directory: File): Boolean {
         if (!directory.exists()) return true
         val files = checkNotNull(directory.listFiles()) { "점령 기록 폴더를 읽을 수 없습니다" }
+        val prepared = files.filter { it.name.startsWith("prepared-pleos-") }
+        if (!prepared.all { bundle ->
+            require(bundle.isDirectory && File(bundle, "receipt").isFile)
+            require(File(bundle, "record.bin.pending").isFile)
+            listOf("record.bin", "record.bin.pending").all { name ->
+                val record = FileConquestStore(File(bundle, name)).read()
+                record == null || (record.source == LocationSourceType.PLEOS &&
+                    record.datasetVersion.isNotBlank() && record.startedUtcMs >= 0 &&
+                    record.observedUtcMs >= record.startedUtcMs && record.teams.isEmpty() && record.events.isEmpty())
+            }
+        }) return false
         return files.filter { it.name.startsWith("pleos-") }.all { file ->
             val record = checkNotNull(FileConquestStore(file).read())
             require(record.source == LocationSourceType.PLEOS && record.datasetVersion.isNotBlank())

@@ -7,7 +7,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ConquestDemoTest {
-    private val catalog = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+    private val catalog = File("src/main/assets/conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
     private fun demo() = ConquestDemo("tester", catalog, listOf("team-red", "team-blue"), "team-red")
 
     @Test fun completeRouteOnlyChangesOwnershipAfterNoon() = runTest {
