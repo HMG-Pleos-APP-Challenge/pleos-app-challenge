@@ -148,7 +148,7 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
 }
 
 @Composable private fun ExplorationLegend(serverProgress:Boolean) {
-    Row(horizontalArrangement=Arrangement.spacedBy(20.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
         if(serverProgress) Text("■ 동기화 대기",color=Color(0xFFF4A261),style=MaterialTheme.typography.labelLarge)
         Text(if(serverProgress) "■ 서버 확정" else "■ 탐험한 구역",color=Color(0xFF62E4AF),style=MaterialTheme.typography.labelLarge)
         Text("□ 미탐험 구역",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelLarge)
@@ -161,11 +161,10 @@ fun formatDiscoveryTime(timestamp: Long): String = DateTimeFormatter.ofPattern("
     Text("해금한 도로 셀 ${session.summary.exploredUnitCount} / ${session.summary.totalExplorableUnitCount}개",style=MaterialTheme.typography.titleLarge)
     Text("도로를 따라 이동하면 지나간 구역이 열려요. 현재 지역의 모든 면적을 계산하는 비율은 아니에요.")
     if(session.unlockedCells.isEmpty()) Text("아직 해금한 도로 셀이 없어요.")
-    session.unlockedCells.sortedWith(compareBy({it.col},{it.row})).take(30).forEachIndexed { index,cell ->
+    session.unlockedCells.sortedWith(compareBy({it.col},{it.row})).forEachIndexed { index,cell ->
         ListItem(headlineContent={Text("탐험한 구역 ${index+1}")},supportingContent={Text(session.cellLabel(cell))},
             trailingContent={Text("지도 보기 →")},modifier=Modifier.clickable { onCell(cell) })
     }
-    if(session.unlockedCells.size>30) Text("목록은 30개까지 표시해요. 전체 개수는 탐험률에 포함됩니다.")
 }
 
 @Composable fun CellDetailScreen(session:ExplorationSession?,cell:CellIndex?) {

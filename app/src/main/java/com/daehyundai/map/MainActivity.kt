@@ -108,6 +108,23 @@ private object DetailPages {
         permissionLauncher.launch(permissions.toTypedArray())
     }
     LaunchedEffect(userId) { if (!recording) requestTracking() }
+    val resumeTracking by rememberUpdatedState(newValue = {
+        val granted = context.checkSelfPermission(PLEOS_LOCATION_PERMISSION)==PackageManager.PERMISSION_GRANTED &&
+            (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED ||
+             context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED)
+        if (granted && !recording) {
+            permissionMessage=""
+            startTracking()
+        }
+    })
+    DisposableEffect(context,userId) {
+        val lifecycle = (context as ComponentActivity).lifecycle
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if(event==androidx.lifecycle.Lifecycle.Event.ON_RESUME) resumeTracking()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val recordingStatus = when {
         recording && sdkState.lastSampleTimestamp != null -> "탐험 기록 중 · 화면 밖에서도 기록해요."
         recording -> "위치 신호를 기다리고 있어요."
@@ -146,7 +163,17 @@ private object DetailPages {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
                         val emulatorWithoutVehicleApi=developerEnabled && (Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.UNAVAILABLE
-                        if (!recording) TextButton(onClick={requestTracking()}) { Text("위치 권한·설정 확인") }
+                        if (!recording) {
+                            TextButton(onClick={requestTracking()}) { Text("위치 권한 다시 확인") }
+                            TextButton(onClick={
+                                context.startActivity(android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.parse("package:"+context.packageName)))
+                            }) { Text("앱 권한 설정 열기") }
+                            TextButton(onClick={
+                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                            }) { Text("차량 위치 설정 열기") }
+                        }
                         if(!com.daehyundai.map.feature.exploration.tracking.canBrowseDetails(vehicleState,emulatorWithoutVehicleApi)) {
                             Text(if(vehicleState==com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.RESTRICTED)
                                 "탐험 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
