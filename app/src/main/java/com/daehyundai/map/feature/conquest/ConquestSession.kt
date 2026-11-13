@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.conquest.data.*
 import com.daehyundai.map.feature.conquest.domain.*
+import com.daehyundai.map.feature.conquest.cloud.*
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -19,7 +20,17 @@ data class ConquestViewState(val catalog: ConquestCatalog, val summary: Conquest
 /** One session at the app composition root. Screens receive snapshots, not direct access to storage. */
 class ConquestSession private constructor(private val userId: String, private val catalog: ConquestCatalog,
     private val feature: LocalConquestFeature, private val pipeline: ConquestLocationPipeline,
-    private val teams: List<String>, val demoEnabled: Boolean, val sourceType:LocationSourceType) {
+    private val teams: List<String>, val demoEnabled: Boolean, val sourceType:LocationSourceType,
+    private val accountLink: ConquestAccountLink?) {
+    internal var serverAccount by mutableStateOf<ConquestAccountResult<Unit>?>(null)
+        private set
+
+    internal suspend fun inspectServerAccount(access: ConquestAccountAccess) {
+        val link = accountLink ?: return // MOCK must not inspect or create a server account.
+        serverAccount = null
+        val inspected = withContext(Dispatchers.IO) { link.inspect(access) }
+        serverAccount = inspected
+    }
     private var savedState by mutableStateOf<ConquestViewState?>(null)
     private var demoState by mutableStateOf<ConquestViewState?>(null)
     val state get() = demoState ?: savedState
@@ -163,7 +174,10 @@ class ConquestSession private constructor(private val userId: String, private va
             ConquestSession(userId, catalog, feature,
                 ConquestLocationPipeline(feature, catalog, source, pendingStore =
                     FilePendingVisitsStore(File(file.parentFile, "${file.name}.pending"), catalog.version, source, userId)), teams,
-                source==LocationSourceType.MOCK && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,source)
+                source==LocationSourceType.MOCK && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,source,
+                if(source==LocationSourceType.PLEOS) ConquestAccountLink(File(context.filesDir,"conquest/server-accounts"),
+                    userId,if(prefix=="pleos") ConquestServerPartition.PLEOS else ConquestServerPartition.PLEOS_EMULATOR,
+                    catalog.version) else null)
                 .also { sessions[file.canonicalPath]=it }
         } }
     }
