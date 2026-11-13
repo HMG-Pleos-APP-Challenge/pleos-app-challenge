@@ -41,6 +41,8 @@ FUTURE는 그대로 pending이다. CONFLICT는 원문을 보존한 채 blocked�
 
 ## 활성화 전 남은 연결
 
+P4-3 후속에서 서버 팀 선택/기존 소속 복구 결과를 전달하는 조립부와 세션 연결을 구현했다. 아래 '조립부 미활성'은 계속 유효하며, 구현한 흐름은 별도 rollout gate=false로 꺼져 있다. 실제 활성화 전 검증 경계는 [conquest-membership.md](conquest-membership.md)를 따른다.
+
 기존 게임은 로컬로 실행한다. ConquestSession은 이제 서버 계정·팀 응답이 검증된 경우에만 prepareServerTracking으로 별도 coordinator를 준비할 수 있다. 해당 준비 함수를 호출하는 앱 조립부의 팀 선택/복구 흐름은 아직 활성화하지 않았다. 단순 계정 조회나 로컬 팀 선택으로 근거 수집·서버 업로드를 시작하지 않는다.
 
 준비된 세션의 onSample은 기존 로컬 기록 처리 후, 기록 잠금 밖에서 같은 입력을 수집기에 전달한다. 외부 서비스의 sampleAccess는 여전히 잡혀 있을 수 있으므로 여기서는 메모리 작업만 한다. 완료 근거는 최대16개 작업의 Channel로 IO worker에 넘긴다. worker가 원래 계정·세대를 다시 확인하고 영속 큐에 넣으며 인증/HTTP를 위치 호출자에게서 기다리지 않는다. 입력 초기화는 두 판정기를 함께 초기화한다. MOCK은 서버 coordinator를 준비할 수 없다.

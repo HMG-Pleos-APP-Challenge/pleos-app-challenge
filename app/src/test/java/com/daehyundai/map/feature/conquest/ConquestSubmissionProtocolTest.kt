@@ -115,12 +115,18 @@ class ConquestSubmissionProtocolTest {
         assertFalse(body.contains("fixture-access"))
         adapter.selectTeam(owner,ConquestServerPartition.PLEOS,"roads-v1","red")
         assertEquals("conquest_select_team_v1",rpc);assertEquals(2,calls)
+        adapter.membership(owner,ConquestServerPartition.PLEOS,"roads-v1")
+        assertEquals("conquest_membership_v1",rpc);assertEquals(3,calls)
+        assertEquals(setOf("p_partition","p_catalog"),JSONObject(body).keys().asSequence().toSet())
         saved=StoredAuthSession(AccountBinding(owner.authUserId,3),10000,"new-access","new-refresh")
         assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
             adapter.submit(owner,ConquestServerPartition.PLEOS,"roads-v1",listOf(packet())))
-        assertEquals(2,calls)
+        assertEquals(3,calls)
         assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
             adapter.selectTeam(owner.copy(projectRef="tsrqponmlkjihgfedcba"),ConquestServerPartition.PLEOS,"roads-v1","red"))
-        assertEquals(2,calls)
+        assertEquals(3,calls)
+        assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
+            adapter.membership(owner,ConquestServerPartition.PLEOS,"roads-v1"))
+        assertEquals(3,calls)
     }
 }

@@ -84,6 +84,11 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.HOME)) }
     val page=stack.last()
     val conquestAuth=remember(context.applicationContext) { conquestAccountAccess(context.applicationContext) }
+    LaunchedEffect(savedConquest,sdkState.conquest,userId) {
+        listOfNotNull(savedConquest,sdkState.conquest.takeIf { sdkState.userId==userId }).distinct().forEach {
+            it.connectServer(conquestAuth) // Separate rollout gate is false; no membership RPC or signup by default.
+        }
+    }
     var accountCheck by remember { mutableIntStateOf(0) }
     LaunchedEffect(page,savedConquest,accountCheck) {
         if(page==DetailPages.SETTINGS) savedConquest?.inspectServerAccount(conquestAuth)

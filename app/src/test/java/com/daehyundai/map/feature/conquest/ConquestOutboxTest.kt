@@ -47,6 +47,8 @@ class ConquestOutboxTest {
             .put("catalogVersion","roads-v1").put("receivedUtcMs",9000).put("results",rows).toString()
     }
     private inner class Server:ConquestServerAccess {
+        override fun membership(expected:ConquestAuthSession,partition:ConquestServerPartition,catalog:String)
+            :ConquestAccountResult<String> = error("No membership request expected")
         var current:ConquestAuthSession?=owner
         var calls=0
         var beforeReply:()->Unit={}

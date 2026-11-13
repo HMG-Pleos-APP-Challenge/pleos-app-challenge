@@ -179,6 +179,19 @@ internal class ConquestServerTracking private constructor(
                 ConquestTeamResponse.parse(reply.value, expected, partition, catalog.version, requestedTeam)
                     .also { require(it.teamId in teams) }
             } catch (_: Exception) { return ConquestAccountResult.Unavailable(ConquestAccountIssue.INVALID_RESPONSE) }
+            return prepareConfirmed(context,installationId,catalog,partition,teams,expected,team,access,
+                uploadsEnabled,limits,handoffCapacity,retryDelayMs,maxSamples)
+        }
+
+        /** Feature-owned assembly calls this only with a parsed selection or membership response. */
+        fun prepareConfirmed(context: Context, installationId: String, catalog: ConquestCatalog,
+            partition: ConquestServerPartition, teams: List<String>, expected: ConquestAuthSession,
+            team: ConquestTeamResponse, access: ConquestServerAccess, uploadsEnabled: Boolean = false,
+            limits: ConquestOutboxLimits = ConquestOutboxLimits(), handoffCapacity: Int = 16,
+            retryDelayMs: Long = 15_000, maxSamples: Int = 2048,
+        ): ConquestAccountResult<ConquestServerTracking> {
+            require(team.teamId in teams && team.selectedUtcMs >= 0)
+            require(handoffCapacity in 1..16 && retryDelayMs > 0 && maxSamples in 3..2048)
             return when (val opened = ConquestOutbox.openCurrent(context, access, expected, installationId, partition, catalog.version, limits)) {
                 is ConquestAccountResult.Unavailable -> opened
                 is ConquestAccountResult.Success -> ConquestAccountResult.Success(expected,

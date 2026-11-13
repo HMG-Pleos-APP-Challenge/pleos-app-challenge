@@ -26,25 +26,68 @@ class ConquestSession private constructor(private val userId: String, private va
     internal var serverTracking by mutableStateOf<ConquestServerTracking?>(null)
         private set
     private val serverSetup = Mutex()
+    private val serverConnectionSetup = Mutex()
+    internal var serverConnection by mutableStateOf<ConquestMembershipConnection?>(null)
+        private set
+    private var serverPort: ConquestServerAccess? = null
+
+    /** Disabled by rollout gate in app assembly; never infer activation from API-key presence. */
+    internal suspend fun connectServer(access: ConquestServerAccess,
+        enabled: Boolean = ConquestServerRollout.membershipEnabled) = serverConnectionSetup.withLock {
+        serverConnection?.deactivate()
+        serverConnection = null
+        serverPort = null
+        serverSetup.withLock {
+            serverTracking?.stopAndJoin()
+            serverTracking = null
+        }
+        val partition = serverPartition
+        if (!enabled || partition == null) return@withLock
+        serverPort = access
+        lateinit var connection: ConquestMembershipConnection
+        connection = ConquestMembershipConnection(access,partition,catalog.version,teams) { expected, team ->
+            replaceServerTracking(isCurrent={ serverConnection === connection && connection.isActive }) {
+                ConquestServerTracking.prepareConfirmed(context,userId,catalog,partition,teams,expected,team,
+                    access,uploadsEnabled=false)
+            }
+        }
+        serverConnection = connection
+        connection.connect()
+    }
+
+    internal suspend fun reconnectServer() { serverPort?.let { connectServer(it,enabled=true) } }
 
     /** Assembly supplies a confirmed server reply; local team selection never enables server tracking.
      * Must be called outside location/record locks. Actual uploads remain disabled in this stage.
      */
     internal suspend fun prepareServerTracking(access: ConquestServerAccess, expected: ConquestAuthSession,
-        reply: ConquestAccountResult.Success<String>, requestedTeam: String): ConquestAccountResult<Unit> = serverSetup.withLock {
+        reply: ConquestAccountResult.Success<String>, requestedTeam: String): ConquestAccountResult<Unit> {
         val partition = serverPartition
-            ?: return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
+            ?: return ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
+        return replaceServerTracking {
+            ConquestServerTracking.prepare(context, userId, catalog, partition, teams, expected,
+                reply, requestedTeam, access, uploadsEnabled=false)
+        }
+    }
+
+    private suspend fun replaceServerTracking(isCurrent: () -> Boolean = { true },
+        prepare: () -> ConquestAccountResult<ConquestServerTracking>)
+        : ConquestAccountResult<Unit> = serverSetup.withLock {
+        if (!isCurrent()) return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED)
         serverTracking?.stopAndJoin()
         serverTracking = null
         var candidate: ConquestServerTracking? = null
         val prepared = try {
             withContext(Dispatchers.IO) {
-                ConquestServerTracking.prepare(context, userId, catalog, partition, teams, expected,
-                    reply, requestedTeam, access, uploadsEnabled=false).also {
+                prepare().also {
                     if (it is ConquestAccountResult.Success) candidate = it.value
                 }
             }
         } catch (failure: Exception) { candidate?.stop(); throw failure }
+        if (!isCurrent()) {
+            candidate?.stop()
+            return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED)
+        }
         when (prepared) {
             is ConquestAccountResult.Unavailable -> prepared
             is ConquestAccountResult.Success -> {
@@ -61,6 +104,7 @@ class ConquestSession private constructor(private val userId: String, private va
         val link = accountLink ?: return // MOCK must not inspect or create a server account.
         serverAccount = null
         val inspected = withContext(Dispatchers.IO) { link.inspect(access) }
+        serverConnection?.inspectAccount(inspected)
         serverTracking?.inspectAccount(inspected)
         serverAccount = inspected
     }

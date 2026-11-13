@@ -4,6 +4,8 @@
 
 ## 팀 선택
 
+2026-11-14 추가: 가입·팀 생성 없이 소속만 읽는 `conquest_membership_v1(p_partition,p_catalog)`를 분리했다. MEMBER는 실제 팀/최초 선택시각을, NO_TEAM은 명시적 null 필드를 반환한다. 동일한 auth.uid()/고정 search_path/권한 경계를 사용하며 내부 테이블 쓰기는 없다. 앱의 연결/활성화 조건과 상태 계약은 [conquest-membership.md](../../docs/conquest-membership.md)를 따른다. 이것은 격리 프로토타입 추가이며 운영 배포 기록이 아니다.
+
 `conquest_select_team_v1(p_partition, p_catalog, p_team)`
 
 소유자는 `auth.uid()`이고 선택 시각은 scope 잠금을 얻은 뒤 서버 시계로 결정한다. body에 소유 UUID/설치ID/접수 시각 인자가 없다. 응답은 protocol=1, userId, partition, catalogVersion, status, teamId, selectedUtcMs다. SELECTED/UNCHANGED는 요청한 팀과 같고 TEAM_LOCKED는 기존 확정 팀을 반환한다. 기존 로컬 기록의 소속을 이 응답으로 자동 덮어쓰지는 않는다.

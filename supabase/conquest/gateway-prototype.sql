@@ -27,6 +27,20 @@ begin
     'status',result,'teamId',membership.team_id,'selectedUtcMs',membership.selected_ms);
 end $$;
 
+-- Read-only membership recovery. Never creates a user, world or membership.
+create function public.conquest_membership_v1(p_partition text,p_catalog text)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare uid uuid:=auth.uid(); active_catalog text; membership conquest_internal.memberships%rowtype;
+begin
+  if uid is null then raise exception 'Authentication required';end if;
+  select catalog into active_catalog from conquest_internal.worlds where partition=p_partition;
+  if not found or active_catalog is distinct from p_catalog then raise exception 'Unavailable conquest catalog';end if;
+  select * into membership from conquest_internal.memberships where user_id=uid and partition=p_partition;
+  return jsonb_build_object('protocol',1,'userId',uid::text,'partition',p_partition,'catalogVersion',p_catalog,
+    'status',case when found then 'MEMBER' else 'NO_TEAM' end,
+    'teamId',membership.team_id,'selectedUtcMs',membership.selected_ms);
+end $$;
+
 -- p_events is an array of immutable UTF-8 JSON strings. Hash the exact strings for queue ACK correlation.
 create function public.conquest_submit_v1(p_partition text,p_catalog text,p_events jsonb)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -95,6 +109,8 @@ end $$;
 
 revoke all on function public.conquest_select_team_v1(text,text,text) from public,anon,authenticated;
 revoke all on function public.conquest_submit_v1(text,text,jsonb) from public,anon,authenticated;
+revoke all on function public.conquest_membership_v1(text,text) from public,anon,authenticated;
 grant execute on function public.conquest_select_team_v1(text,text,text) to authenticated;
 grant execute on function public.conquest_submit_v1(text,text,jsonb) to authenticated;
+grant execute on function public.conquest_membership_v1(text,text) to authenticated;
 commit;

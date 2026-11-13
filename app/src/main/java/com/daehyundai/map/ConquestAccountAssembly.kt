@@ -14,6 +14,10 @@ internal class ConquestAccountAdapter(
 ) : ConquestServerAccess {
     override fun existingAccount(): ConquestAccountResult<Unit> = map(auth.existingAccount())
 
+    override fun membership(expected: ConquestAuthSession, partition: ConquestServerPartition,
+        catalog: String): ConquestAccountResult<String> = execute(expected,"conquest_membership_v1",
+        JSONObject().put("p_partition",partition.wireName).put("p_catalog",catalog))
+
     override fun <T> withCurrentAccount(expected: ConquestAuthSession, apply: () -> T): ConquestAccountResult<T> {
         if (expected.projectRef != projectRef) return ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED)
         return map(auth.withCurrentAccount(AccountBinding(expected.authUserId, expected.generation), apply))
@@ -57,6 +61,8 @@ internal fun conquestAccountAccess(context: Context): ConquestServerAccess {
     val ref = Regex("([a-z0-9]{20})\\.supabase\\.co").matchEntire(host)?.groupValues?.get(1)
     if (!SupabaseCloud.configured || ref == null) return object : ConquestServerAccess {
         override fun existingAccount() = ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
+        override fun membership(expected: ConquestAuthSession, partition: ConquestServerPartition, catalog: String) =
+            ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
         override fun <T> withCurrentAccount(expected: ConquestAuthSession, apply: () -> T) =
             ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
         override fun selectTeam(expected: ConquestAuthSession, partition: ConquestServerPartition, catalog: String, teamId: String) =

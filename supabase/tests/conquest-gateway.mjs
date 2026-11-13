@@ -77,6 +77,25 @@ try {
     assert.equal((await choose(a,'blue')).status,'TEAM_LOCKED');
     assert.equal((await choose(b,'green')).teamId,'green');
   });
+  async function membership(user=a,partition='pleos',version=catalog) {
+    await login(user);return (await db.query('select public.conquest_membership_v1($1,$2) result',[partition,version])).rows[0].result;
+  }
+  await check('membership recovery does not select a team or create records',async()=>{
+    const result=await membership();assert.equal(result.status,'NO_TEAM');assert.equal(result.teamId,null);
+    assert.equal(result.selectedUtcMs,null);assert.equal(result.userId,a);
+    await rootRole();assert.equal((await db.query('select count(*)::int n from conquest_internal.memberships')).rows[0].n,0);
+    assert.equal(await count(),0);
+  });
+  await check('membership recovery returns only caller and partition with original selection time',async()=>{
+    await choose();await choose(b,'blue');await choose(a,'green','pleos-emulator');await clock(finish);
+    assert.equal((await membership()).teamId,'red');assert.equal((await membership()).selectedUtcMs,start-1000);
+    assert.equal((await membership(b)).teamId,'blue');assert.equal((await membership(a,'pleos-emulator')).teamId,'green');
+    assert.equal((await membership()).catalogVersion,catalog);assert.equal((await membership()).protocol,1);
+  });
+  await check('membership read rejects missing JWT, anonymous execution and unavailable worlds',async()=>{
+    await reject(()=>membership(null));await reject(()=>membership(a,'mock'));await reject(()=>membership(a,'pleos','unknown'));
+    await login(a,'anon');await reject(()=>db.query('select public.conquest_membership_v1($1,$2)',['pleos',catalog]));
+  });
   await check('authenticated proof submission returns exact immutable request hash',async()=>{
     await choose();await clock(finish+1);const result=await submit();
     assert.equal(result.userId,a);assert.equal(result.partition,'pleos');assert.equal(result.catalogVersion,catalog);
@@ -160,8 +179,8 @@ try {
     await reject(()=>db.query('select conquest_internal.admission_now_ms()'));
     await rootRole();
     const functions=(await db.query(`select proname,prosecdef,proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-      where n.nspname='public' and proname in ('conquest_select_team_v1','conquest_submit_v1')`)).rows;
-    assert.equal(functions.length,2);for(const f of functions) {assert.equal(f.prosecdef,true);assert.ok(f.proconfig.includes('search_path=""'));}
+      where n.nspname='public' and proname in ('conquest_select_team_v1','conquest_submit_v1','conquest_membership_v1')`)).rows;
+    assert.equal(functions.length,3);for(const f of functions) {assert.equal(f.prosecdef,true);assert.ok(f.proconfig.includes('search_path=""'));}
   });
   console.log(`PASS: ${passed} isolated authenticated gateway checks. JWT claims are fixtures, not a hosted login test.`);
 } catch(error) {

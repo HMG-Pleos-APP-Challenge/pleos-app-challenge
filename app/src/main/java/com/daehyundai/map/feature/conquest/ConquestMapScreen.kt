@@ -49,6 +49,17 @@ import kotlin.math.*
     session?.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
     if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
     if (session?.sourceType == com.daehyundai.map.core.model.LocationSourceType.PLEOS && session.demoLabel == null) {
+        val connectionScope = rememberCoroutineScope()
+        session.serverConnection?.let { connection ->
+            val membership by connection.state.collectAsState()
+            Text(membership.message)
+            if (!membership.loading && membership.issue != null) {
+                OutlinedButton(onClick={ connectionScope.launch { session.reconnectServer() } }) { Text("서버 소속 다시 확인") }
+            }
+            if (membership.needsTeam) state?.teamIds.orEmpty().forEach { team ->
+                OutlinedButton(onClick={ connectionScope.launch { connection.selectTeam(team) } }) { Text("서버 팀 선택: $team") }
+            }
+        }
         val tracking = session.serverTracking
         if (tracking == null) Text(com.daehyundai.map.feature.conquest.cloud.ConquestTransferState().message)
         else {

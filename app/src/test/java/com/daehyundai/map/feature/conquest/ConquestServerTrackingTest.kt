@@ -52,6 +52,13 @@ class ConquestServerTrackingTest {
             .put("teamId",team).put("selectedUtcMs",selectedMs).toString())
 
     private class Server(private val owner: ConquestAuthSession) : ConquestServerAccess {
+        var membershipRaw: String? = null
+        var membershipCalls = 0
+        override fun membership(expected:ConquestAuthSession,partition:ConquestServerPartition,catalog:String)
+            :ConquestAccountResult<String> {
+            membershipCalls++
+            return withCurrentAccount(expected) { requireNotNull(membershipRaw) }
+        }
         @Volatile var current: ConquestAuthSession? = owner
         @Volatile var calls = 0
         @Volatile var failRequest = false
@@ -282,5 +289,38 @@ class ConquestServerTrackingTest {
         assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED),result)
         assertNull(session.serverTracking)
         assertFalse(database.parentFile!!.exists())
+    }
+
+    @Test fun sessionRolloutDefaultsOffAndExplicitRecoveryInstallsOnlyConfirmedServerTeam() = runBlocking {
+        val session = ConquestSession.open(sessionContext(),"u",source=LocationSourceType.PLEOS,recordPrefix="pleos")
+        session.refresh()
+        val server = Server(owner).also {
+            it.membershipRaw=JSONObject(teamReply().value).put("status","MEMBER").put("teamId","team-blue")
+                .put("catalogVersion",session.state!!.catalog.version).toString()
+        }
+        session.connectServer(server)
+        assertEquals(0,server.membershipCalls); assertNull(session.serverTracking)
+        try {
+            session.connectServer(server,enabled=true)
+            assertEquals("team-blue",session.serverConnection!!.state.value.teamId)
+            assertNotNull(session.serverTracking)
+            assertNull(session.state!!.summary.teamId)
+            assertEquals(1,server.membershipCalls); assertEquals(0,server.calls)
+        } finally { session.connectServer(server,enabled=false) }
+        assertNull(session.serverTracking); assertNull(session.serverConnection)
+        assertTrue(database.parentFile!!.listFiles().orEmpty().any { it.extension=="sqlite" })
+    }
+
+    @Test fun recoveringNoServerTeamCreatesNoAccountQueueNamespace() = runBlocking {
+        val session = ConquestSession.open(sessionContext(),"u",source=LocationSourceType.PLEOS,recordPrefix="pleos")
+        session.refresh()
+        val server = Server(owner).also {
+            it.membershipRaw=JSONObject(teamReply().value).put("status","NO_TEAM").put("teamId",JSONObject.NULL)
+                .put("selectedUtcMs",JSONObject.NULL).put("catalogVersion",session.state!!.catalog.version).toString()
+        }
+        session.connectServer(server,enabled=true)
+        assertTrue(session.serverConnection!!.state.value.needsTeam)
+        assertNull(session.serverTracking); assertFalse(database.parentFile!!.exists())
+        session.connectServer(server,enabled=false)
     }
 }

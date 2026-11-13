@@ -47,6 +47,25 @@ internal enum class ConquestSubmitStatus {
 }
 internal data class ConquestSubmitOutcome(val eventId: String, val status: ConquestSubmitStatus)
 internal enum class ConquestTeamStatus { SELECTED, UNCHANGED, TEAM_LOCKED }
+internal data class ConquestMembershipResponse(val team: ConquestTeamResponse?) {
+    companion object {
+        fun parse(raw: String, expected: ConquestAuthSession, partition: ConquestServerPartition,
+            catalog: String): ConquestMembershipResponse {
+            require(raw.toByteArray(Charsets.UTF_8).size <= 16384)
+            val json = JSONObject(raw)
+            require(json.strictLong("protocol") == 1L && json.strictString("userId") == expected.authUserId)
+            require(json.strictString("partition") == partition.wireName && json.strictString("catalogVersion") == catalog)
+            require(json.has("teamId") && json.has("selectedUtcMs"))
+            return when (json.strictString("status")) {
+                "NO_TEAM" -> { require(json.isNull("teamId") && json.isNull("selectedUtcMs")); ConquestMembershipResponse(null) }
+                "MEMBER" -> ConquestMembershipResponse(ConquestTeamResponse(ConquestTeamStatus.UNCHANGED,
+                    json.strictString("teamId").also { require(it.isNotBlank()) }, json.strictLong("selectedUtcMs")))
+                else -> error("Invalid conquest membership")
+            }
+        }
+    }
+}
+
 internal data class ConquestTeamResponse(val status: ConquestTeamStatus, val teamId: String, val selectedUtcMs: Long) {
     companion object {
         fun parse(raw: String, expected: ConquestAuthSession, partition: ConquestServerPartition,
@@ -107,6 +126,8 @@ private fun JSONObject.strictLong(key: String): Long {
 
 /** Blocking, operation-specific port. No arbitrary RPC name or token reaches conquest. */
 internal interface ConquestServerAccess : ConquestAccountAccess {
+    fun membership(expected: ConquestAuthSession, partition: ConquestServerPartition,
+        catalog: String): ConquestAccountResult<String>
     fun selectTeam(expected: ConquestAuthSession, partition: ConquestServerPartition,
         catalog: String, teamId: String): ConquestAccountResult<String>
     fun submit(expected: ConquestAuthSession, partition: ConquestServerPartition,
