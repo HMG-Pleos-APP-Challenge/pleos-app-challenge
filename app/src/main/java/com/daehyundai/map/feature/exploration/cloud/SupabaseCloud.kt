@@ -38,7 +38,7 @@ private class SessionVault(context:Context,namespace:String="") {
 }
 
 class SupabaseCloud(context:Context,sessionNamespace:String="",
-    private val requestOverride:((String,JSONObject,String?,String)->String)?=null):ExplorationCloud {
+    private val requestOverride:((String,JSONObject,String?,String)->String)?=null):ExplorationCloud,ExistingAccountAuth {
     private val appContext=context.applicationContext
     private val vault=SessionVault(context,sessionNamespace)
     private val endpoint=BuildConfig.SUPABASE_URL.trimEnd('/')
@@ -69,9 +69,46 @@ class SupabaseCloud(context:Context,sessionNamespace:String="",
         }
         return value
     }
-    private fun save(value:JSONObject) {
-        value.put("expires_at",System.currentTimeMillis()/1000+value.getLong("expires_in"));vault.write(value)
+    private fun save(value:JSONObject,accountReplacement:Boolean=false) {
+        val previous=vault.read()
+        val previousGeneration=previous?.optLong("_account_generation",0) ?: 0
+        val changed=accountReplacement || previous==null ||
+            previous.getJSONObject("user").getString("id")!=value.getJSONObject("user").getString("id")
+        val generation=if(changed) Math.addExact(previousGeneration,1) else previousGeneration
+        value.put("_account_generation",generation)
+        value.put("expires_at",System.currentTimeMillis()/1000+value.getLong("expires_in"))
+        decodeStoredSession(value) // Validate before replacing the previously usable session.
+        vault.write(value)
     }
+
+    private fun storedSession():StoredAuthSession? = vault.read()?.let(::decodeStoredSession)
+
+    private fun decodeStoredSession(value:JSONObject):StoredAuthSession {
+        require(value.getString("access_token").isNotBlank() && value.getString("refresh_token").isNotBlank())
+        return StoredAuthSession(
+            AccountBinding(value.getJSONObject("user").getString("id"),value.optLong("_account_generation",0)),
+            value.getLong("expires_at"),value.getString("access_token"),value.getString("refresh_token"))
+    }
+
+    private val existingAuth=ExistingAccountBoundary(lock,::storedSession,{ current ->
+        val value=JSONObject(request("/auth/v1/token?grant_type=refresh_token",
+            JSONObject().put("refresh_token",current.refreshToken)))
+        check(value.getJSONObject("user").getString("id")==current.binding.authUserId)
+        save(value)
+        checkNotNull(storedSession())
+    },{ name,body,current ->
+        require(name.matches(Regex("[a-z0-9_]+")))
+        request("/rest/v1/rpc/$name",JSONObject(body),current.accessToken)
+    })
+
+    override fun existingAccount():AccountAuthResult<Unit> = existingAuth.existingAccount()
+
+    override fun rpcForAccount(expected:AccountBinding,name:String,body:String):AccountAuthResult<String> =
+        existingAuth.rpcForAccount(expected,name,body)
+
+    override fun <T> withCurrentAccount(expected:AccountBinding,apply:()->T):AccountAuthResult<T> =
+        existingAuth.withCurrentAccount(expected,apply)
+
     fun rpc(name:String,body:JSONObject):String=synchronized(lock) {
         require(name.matches(Regex("[a-z0-9_]+")))
         request("/rest/v1/rpc/$name",body,session().getString("access_token"))
@@ -106,7 +143,7 @@ class SupabaseCloud(context:Context,sessionNamespace:String="",
         com.daehyundai.map.feature.conquest.data.ConquestAccountRestore.restoreWhenEmpty(java.io.File(appContext.filesDir,"conquest")) {
             val value=JSONObject(request("/auth/v1/token?grant_type=password",JSONObject().put("email",email.trim()).put("password",password)))
             check(!value.getJSONObject("user").isNull("email_confirmed_at"))
-            save(value)
+            save(value,accountReplacement=true)
         }
     }
     companion object {
