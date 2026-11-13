@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.util.concurrent.atomic.AtomicBoolean
+import java.io.File
 
 internal data class ConquestTransferState(
     val collecting: Boolean = false,
@@ -46,6 +47,7 @@ internal class ConquestServerTracking private constructor(
     private val uploadsEnabled: Boolean,
     handoffCapacity: Int,
     private val retryDelayMs: Long,
+    private val snapshots: ConquestSnapshotSync?,
 ) {
     private sealed interface Work {
         data class Store(val request: ConquestSubmission) : Work
@@ -58,10 +60,13 @@ internal class ConquestServerTracking private constructor(
     private var accepting = true
     private val mutable = MutableStateFlow(ConquestTransferState(collecting=true, uploadsEnabled=uploadsEnabled))
     val state = mutable.asStateFlow()
+    private val snapshotMutable = MutableStateFlow(ConquestSnapshotState())
+    val snapshotState = snapshotMutable.asStateFlow()
     @OptIn(ExperimentalCoroutinesApi::class)
     private val worker = scope.launch {
         try {
             refreshCounts()
+            refreshSnapshot(loadCache=true)
             while (isActive) {
                 // Select the timer atomically instead of cancelling a receive that may have consumed a proof.
                 val next = select {
@@ -77,6 +82,7 @@ internal class ConquestServerTracking private constructor(
                 // Explicitly disabled for the app until isolated deployment/activation is completed.
                 if (uploadsEnabled && state.value.collecting) upload()
                 else if (next?.getOrNull() == Work.Retry) refreshCounts()
+                if (state.value.collecting) refreshSnapshot()
             }
         } finally {
             stop()
@@ -113,6 +119,7 @@ internal class ConquestServerTracking private constructor(
         accepting = false
         capture.reset()
         mutable.update { it.copy(collecting=false) }
+        snapshotMutable.value = ConquestSnapshotState()
         work.close()
     }
 
@@ -162,6 +169,39 @@ internal class ConquestServerTracking private constructor(
         }
     }
 
+    private suspend fun refreshSnapshot(loadCache: Boolean = false) {
+        val sync = snapshots ?: return
+        val context = currentCoroutineContext()
+        if (loadCache) {
+            val cached = try { sync.cached() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { ConquestAccountResult.Unavailable(ConquestAccountIssue.READ_SNAPSHOT) }
+            if (cached is ConquestAccountResult.Success) publishSnapshot(ConquestSnapshotState(cached.value,cached=true))
+            if (cached is ConquestAccountResult.Unavailable &&
+                (cached.issue==ConquestAccountIssue.ACCOUNT_CHANGED || cached.issue==ConquestAccountIssue.NO_SESSION)) {
+                accountUnavailable(cached.issue);return
+            }
+        }
+        val result = try { sync.refresh { context.ensureActive() } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { ConquestAccountResult.Unavailable(ConquestAccountIssue.READ_SNAPSHOT) }
+        if (!state.value.collecting) return
+        when (result) {
+            is ConquestAccountResult.Success -> publishSnapshot(ConquestSnapshotState(result.value))
+            is ConquestAccountResult.Unavailable -> {
+                if (result.issue == ConquestAccountIssue.ACCOUNT_CHANGED || result.issue == ConquestAccountIssue.NO_SESSION) {
+                    accountUnavailable(result.issue)
+                } else synchronized(this) {
+                    if (accepting) snapshotMutable.update { it.copy(cached=it.snapshot != null,issue=result.issue) }
+                }
+            }
+        }
+    }
+
+    @Synchronized private fun publishSnapshot(value: ConquestSnapshotState) {
+        if (accepting) snapshotMutable.value=value
+    }
+
     companion object {
         /** Only a validated select-team reply can prepare tracking. Does not select a team or sign up.
          * Call outside all sample/record locks. Production session always passes uploadsEnabled=false.
@@ -189,6 +229,7 @@ internal class ConquestServerTracking private constructor(
             team: ConquestTeamResponse, access: ConquestServerAccess, uploadsEnabled: Boolean = false,
             limits: ConquestOutboxLimits = ConquestOutboxLimits(), handoffCapacity: Int = 16,
             retryDelayMs: Long = 15_000, maxSamples: Int = 2048,
+            readSnapshots: Boolean = false,
         ): ConquestAccountResult<ConquestServerTracking> {
             require(team.teamId in teams && team.selectedUtcMs >= 0)
             require(handoffCapacity in 1..16 && retryDelayMs > 0 && maxSamples in 3..2048)
@@ -197,7 +238,13 @@ internal class ConquestServerTracking private constructor(
                 is ConquestAccountResult.Success -> ConquestAccountResult.Success(expected,
                     ConquestServerTracking(expected, opened.value, access,
                         ConquestServerCapture(installationId, catalog, team.selectedUtcMs, maxSamples),
-                        uploadsEnabled, handoffCapacity, retryDelayMs))
+                        uploadsEnabled, handoffCapacity, retryDelayMs,
+                        if (readSnapshots) {
+                            val binding=opened.value.binding
+                            ConquestSnapshotSync(ConquestSnapshotCache(File(context.filesDir,
+                                "conquest/server-accounts/${binding.storageKey()}.snapshot"),binding,catalog,teams),
+                                access,expected,partition,catalog,teams,team.teamId)
+                        } else null))
             }
         }
     }

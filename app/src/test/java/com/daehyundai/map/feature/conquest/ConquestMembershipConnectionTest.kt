@@ -21,6 +21,8 @@ class ConquestMembershipConnectionTest {
             .put("status",status).put("teamId",team ?: JSONObject.NULL).put("selectedUtcMs",time ?: JSONObject.NULL).toString()
 
     private inner class Server : ConquestServerAccess {
+        override fun snapshot(expected:ConquestAuthSession,partition:ConquestServerPartition,catalog:String)
+            :ConquestAccountResult<String> = error("No snapshot request expected")
         var current: ConquestAuthSession? = owner
         var raw = reply("NO_TEAM")
         var selected = reply("SELECTED","red",100)

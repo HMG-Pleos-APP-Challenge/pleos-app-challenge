@@ -126,6 +126,8 @@ private fun JSONObject.strictLong(key: String): Long {
 
 /** Blocking, operation-specific port. No arbitrary RPC name or token reaches conquest. */
 internal interface ConquestServerAccess : ConquestAccountAccess {
+    fun snapshot(expected: ConquestAuthSession, partition: ConquestServerPartition,
+        catalog: String): ConquestAccountResult<String>
     fun membership(expected: ConquestAuthSession, partition: ConquestServerPartition,
         catalog: String): ConquestAccountResult<String>
     fun selectTeam(expected: ConquestAuthSession, partition: ConquestServerPartition,

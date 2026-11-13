@@ -52,6 +52,11 @@ class ConquestServerTrackingTest {
             .put("teamId",team).put("selectedUtcMs",selectedMs).toString())
 
     private class Server(private val owner: ConquestAuthSession) : ConquestServerAccess {
+        var snapshotRaw: String? = null
+        var beforeSnapshotReply: () -> Unit = {}
+        override fun snapshot(expected:ConquestAuthSession,partition:ConquestServerPartition,catalog:String)
+            :ConquestAccountResult<String> = snapshotRaw?.let { raw -> beforeSnapshotReply();withCurrentAccount(expected) { raw } }
+                ?: ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
         var membershipRaw: String? = null
         var membershipCalls = 0
         override fun membership(expected:ConquestAuthSession,partition:ConquestServerPartition,catalog:String)
@@ -322,5 +327,64 @@ class ConquestServerTrackingTest {
         assertTrue(session.serverConnection!!.state.value.needsTeam)
         assertNull(session.serverTracking); assertFalse(database.parentFile!!.exists())
         session.connectServer(server,enabled=false)
+    }
+
+    @Test fun serverSnapshotFeedsMapHomeViewWhileLocalSummarySurvivesOfflineCacheAndDisable() = runBlocking {
+        val session=ConquestSession.open(sessionContext(),"u",teams=listOf("red","blue","green"),source=LocationSourceType.PLEOS,recordPrefix="pleos")
+        session.refresh()
+        val local=session.localState!!.summary
+        val values=JSONArray(File("../docs/data/conquest-server-snapshots.json").readText())
+        val full=(0 until values.length()).map(values::getJSONObject).single {it.getString("name")=="full"}.getJSONObject("snapshot")
+        val server=Server(owner).also {
+            it.snapshotRaw=full.toString()
+            it.membershipRaw=JSONObject(teamReply().value).put("status","MEMBER")
+                .put("catalogVersion",session.state!!.catalog.version).toString()
+        }
+        try {
+            session.connectServer(server,enabled=true)
+            var tracking=checkNotNull(session.serverTracking)
+            withTimeout(10_000) {while(session.state?.serverLabel==null) delay(10)}
+            assertEquals(1,session.state!!.summary.contributionCount)
+            assertEquals(1,session.state!!.summary.ownedRoadCount)
+            assertEquals(1453,session.state!!.owners.size)
+            assertTrue(session.state!!.roadDetails.isEmpty()) // Never fabricate per-road personal data.
+            assertEquals(local,session.localState!!.summary)
+            server.snapshotRaw=null
+            tracking.requestRetry()
+            withTimeout(10_000) {tracking.snapshotState.first {it.cached && it.issue!=null}}
+            withTimeout(10_000) {while(session.state?.serverLabel?.contains("이전 확인본")!=true) delay(10)}
+            session.connectServer(server,enabled=false)
+            assertEquals(local,session.state!!.summary)
+            session.connectServer(server,enabled=true)
+            tracking=checkNotNull(session.serverTracking)
+            withTimeout(10_000) {tracking.snapshotState.first {it.snapshot!=null && it.cached}}
+            withTimeout(10_000) {while(session.state?.serverLabel==null) delay(10)}
+            assertEquals(1,session.state!!.summary.ownedRoadCount)
+            assertEquals(local,session.localState!!.summary)
+            assertEquals(0,server.calls)
+        } finally {session.connectServer(server,enabled=false)}
+    }
+
+    @Test fun lateSnapshotAfterTrackingStopCannotReappearInMapHomeState() = runBlocking {
+        val session=ConquestSession.open(sessionContext(),"u",teams=listOf("red","blue","green"),source=LocationSourceType.PLEOS,recordPrefix="pleos")
+        session.refresh()
+        val values=JSONArray(File("../docs/data/conquest-server-snapshots.json").readText())
+        val full=(0 until values.length()).map(values::getJSONObject).single {it.getString("name")=="full"}.getJSONObject("snapshot")
+        val entered=CountDownLatch(1);val release=CountDownLatch(1)
+        val server=Server(owner).also {
+            it.snapshotRaw=full.toString()
+            it.beforeSnapshotReply={entered.countDown();check(release.await(10,TimeUnit.SECONDS))}
+            it.membershipRaw=JSONObject(teamReply().value).put("status","MEMBER")
+                .put("catalogVersion",session.state!!.catalog.version).toString()
+        }
+        try {
+            session.connectServer(server,enabled=true)
+            assertTrue(entered.await(5,TimeUnit.SECONDS))
+            val tracking=checkNotNull(session.serverTracking)
+            tracking.stop()
+            release.countDown();tracking.stopAndJoin()
+            assertNull(tracking.snapshotState.value.snapshot)
+            assertNull(session.state!!.serverLabel)
+        } finally {release.countDown();session.connectServer(server,enabled=false)}
     }
 }

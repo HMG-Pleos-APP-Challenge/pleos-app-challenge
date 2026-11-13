@@ -1,6 +1,6 @@
 import {PGlite} from '@electric-sql/pglite';
 import {postgis} from '@electric-sql/pglite-postgis';
-import {readFile,readdir} from 'node:fs/promises';
+import {readFile,readdir,writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 // Fresh in-memory Postgres only. No URL, key, hosted schema, real JWT or Cron job.
@@ -11,6 +11,7 @@ const day=86400000, hour=3600000;
 const catalog='settlement-fixture';
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
 let passed=0;
+const exported=[];
 const rootRole=()=>db.exec('reset role');
 async function initialize(at=start,partition='pleos') {
   await rootRole();await db.query('select conquest_internal.initialize_settlement($1,$2)',[partition,at]);
@@ -80,6 +81,7 @@ try {
     assert.equal(s.revision,0);assert.equal(s.lastSettlementUtcMs,null);assert.equal(s.nextSettlementUtcMs,start+day);
     assert.equal(s.roads.length,2);assert.ok(s.roads.every(r=>r.ownerTeamId===null&&r.reason==='INITIAL'));
     assert.equal((await settle(start+day-1)).processed,0);assert.equal(await count('settlement_runs'),0);
+    exported.push({name:'initial',kind:'fixture',snapshot:s});
     await reject(()=>initialize(start+1));
   });
   await check('non-noon start uses the next KST noon and excludes pre-start history',async()=>{
@@ -205,6 +207,7 @@ try {
     assert.equal(s.roads.length,1453);assert.equal(new Set(s.roads.map(r=>r.roadId)).size,1453);
     assert.equal(s.summary.ownedRoadCount,1);assert.equal(await count('settlement_roads'),1453);
     const bytes=Buffer.byteLength(JSON.stringify(s));assert.ok(bytes<1048576);
+    exported.push({name:'full',kind:'full',snapshot:s});
     console.log(`INFO full snapshot UTF-8 bytes: ${bytes}`);
   });
   await check('existing exploration RPC stays byte-for-byte unchanged',async()=>{
@@ -233,6 +236,7 @@ try {
     assert.deepEqual(retry.results.map(r=>r.status),['ACCEPTED','LATE']);
     const after=await snapshot();assert.deepEqual(after.roads,before.roads);assert.equal(after.revision,before.revision);
     assert.equal(after.summary.contributionCount,1);assert.equal(after.summary.ownedRoadCount,1);
+    exported.push({name:'gateway',kind:'fixture',snapshot:after});
     assert.equal((await snapshot(b)).summary.contributionCount,0);
   });
   const parity=JSON.parse(await readFile(new URL('app/build/conquest-proof/settlements.json',root),'utf8'));
@@ -248,6 +252,9 @@ try {
       assert.deepEqual(s.roads,expected.roads);
     }
   });
+  await writeFile(new URL('app/build/conquest-proof/server-snapshots.json',root),JSON.stringify(exported));
+  assert.deepEqual(exported,JSON.parse(await readFile(new URL('docs/data/conquest-server-snapshots.json',root),'utf8')),
+    'SQL snapshot fixture changed; inspect the generated ignored artifact before updating the committed fixture');
   console.log(`PASS: ${passed} isolated settlement/snapshot checks. No hosted Auth, Cron or multi-connection concurrency test.`);
 } catch(error) {
   console.error({message:error.message,code:error.code,where:error.where});process.exitCode=1;

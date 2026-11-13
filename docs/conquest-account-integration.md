@@ -30,6 +30,8 @@ ConquestAccountAssemblyTest는 실제 ExistingAccountBoundary와 모의 세션/H
 
 ## 후속 격리 API 계약 연결
 
+2026-11-14 P5-2: conquest_snapshot_v1의 고정 읽기 매핑·검사·계정별 캐시와 홈/지도 전달을 추가했다. 프로필의 '기기 내 기록' 표시는 localState 요약으로 유지한다. [conquest-snapshot-client.md](conquest-snapshot-client.md)에 원자 저장·역행 차단·표시 출처·격리 검증을 기록했다. rollout/업로드는 아직 false다.
+
 2026-11-14 P4-3: 조립부에 점령 소속 조회 포트를 추가하고, MainActivity에서 SDK 점령 세션의 연결 진입점을 호출하도록 연결했다. 별도 rollout gate=false이므로 현재 앱 동작에서는 소속 RPC·가입·귀속 저장을 실행하지 않는다. 격리 시험에서만 기존 소속 조회→수집기 준비 및 명시적 서버 팀 선택→확정 팀 준비를 검증한다. [conquest-membership.md](conquest-membership.md)를 따른다. 토큰/기존 탐험 인증 구현과 로컬 요약은 유지한다.
 
 2026-11-14 후속: 최소 근거/SQLite 큐/부분 ACK에 이어 ConquestSession의 같은 위치 입력·입력 초기화 및 상태 UI를 선택적 coordinator에 연결했다. 자세한 현재 상태는 [conquest-outbox.md](conquest-outbox.md)를 따른다. 아래의 '실제 큐 없음'은 이전 단계 기록이다. 검증된 서버 팀 응답을 앱 조립부가 전달하는 활성화 흐름은 아직 없고, 앱의 업로드는 계속 비활성이다. 로컬 팀 선택·기존 계정 조회만으로 수집기를 만들지 않는다. 기존 탐험/인증/추적 서비스 내부 변경은 없다.

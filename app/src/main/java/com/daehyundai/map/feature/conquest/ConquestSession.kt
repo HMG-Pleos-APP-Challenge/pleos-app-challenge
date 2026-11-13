@@ -10,12 +10,16 @@ import com.daehyundai.map.feature.conquest.domain.*
 import com.daehyundai.map.feature.conquest.cloud.*
 import java.io.File
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class ConquestViewState(val catalog: ConquestCatalog, val summary: ConquestSummary,
     val owners: Map<String, String?>, val teamIds: List<String>,
-    val roadDetails: Map<String, ConquestRoadDetail> = emptyMap())
+    val roadDetails: Map<String, ConquestRoadDetail> = emptyMap(),
+    val serverLabel: String? = null, val serverStartedUtcMs: Long? = null,
+    val serverSettledUtcMs: Long? = null,
+    val serverSettlements: Map<String,RoadSettlementExplanation> = emptyMap())
 
 /** One session at the app composition root. Screens receive snapshots, not direct access to storage. */
 class ConquestSession private constructor(private val userId: String, private val catalog: ConquestCatalog,
@@ -26,6 +30,10 @@ class ConquestSession private constructor(private val userId: String, private va
     internal var serverTracking by mutableStateOf<ConquestServerTracking?>(null)
         private set
     private val serverSetup = Mutex()
+    private val snapshotScope = CoroutineScope(SupervisorJob()+Dispatchers.IO)
+    private var snapshotObserver: Job? = null
+    private val snapshotDisplay = Any()
+    private var serverView by mutableStateOf<Pair<ConquestServerTracking,ConquestViewState>?>(null)
     private val serverConnectionSetup = Mutex()
     internal var serverConnection by mutableStateOf<ConquestMembershipConnection?>(null)
         private set
@@ -38,8 +46,10 @@ class ConquestSession private constructor(private val userId: String, private va
         serverConnection = null
         serverPort = null
         serverSetup.withLock {
+            snapshotObserver?.cancel();snapshotObserver=null
+            synchronized(snapshotDisplay) { serverView=null }
             serverTracking?.stopAndJoin()
-            serverTracking = null
+            synchronized(snapshotDisplay) { serverTracking=null }
         }
         val partition = serverPartition
         if (!enabled || partition == null) return@withLock
@@ -48,7 +58,7 @@ class ConquestSession private constructor(private val userId: String, private va
         connection = ConquestMembershipConnection(access,partition,catalog.version,teams) { expected, team ->
             replaceServerTracking(isCurrent={ serverConnection === connection && connection.isActive }) {
                 ConquestServerTracking.prepareConfirmed(context,userId,catalog,partition,teams,expected,team,
-                    access,uploadsEnabled=false)
+                    access,uploadsEnabled=false,readSnapshots=true)
             }
         }
         serverConnection = connection
@@ -74,8 +84,10 @@ class ConquestSession private constructor(private val userId: String, private va
         prepare: () -> ConquestAccountResult<ConquestServerTracking>)
         : ConquestAccountResult<Unit> = serverSetup.withLock {
         if (!isCurrent()) return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED)
+        snapshotObserver?.cancel();snapshotObserver=null
+        synchronized(snapshotDisplay) { serverView=null }
         serverTracking?.stopAndJoin()
-        serverTracking = null
+        synchronized(snapshotDisplay) { serverTracking=null }
         var candidate: ConquestServerTracking? = null
         val prepared = try {
             withContext(Dispatchers.IO) {
@@ -91,7 +103,32 @@ class ConquestSession private constructor(private val userId: String, private va
         when (prepared) {
             is ConquestAccountResult.Unavailable -> prepared
             is ConquestAccountResult.Success -> {
-                serverTracking = prepared.value
+                synchronized(snapshotDisplay) { serverTracking=prepared.value }
+                val tracking=prepared.value
+                snapshotObserver=snapshotScope.launch {
+                    tracking.snapshotState.collect { status ->
+                        val view=status.snapshot?.let { snapshot ->
+                            val explanations=snapshot.settledMs?.let { cutoff -> snapshot.roads.mapValues { (_,r) ->
+                                RoadSettlementExplanation(cutoff,r.scores,r.previous,r.owner,SettlementReason.valueOf(r.reason))
+                            } }.orEmpty()
+                            val label=buildString {
+                                val confirmed=java.time.Instant.ofEpochMilli(snapshot.generatedMs).atZone(java.time.ZoneId.of("Asia/Seoul"))
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+                                append("서버 확인 기록 · $confirmed KST")
+                                if(status.cached) append(" · 저장된 이전 확인본")
+                                if(snapshot.settlementDelayed) append(" · 서버 정산 지연")
+                                if(status.issue!=null) append(" · 최신 확인 실패")
+                            }
+                            ConquestViewState(catalog,ConquestSummary(userId,snapshot.team,snapshot.owned,snapshot.contributions,
+                                snapshot.updatedMs),snapshot.roads.mapValues { it.value.owner },teams,serverLabel=label,
+                                serverStartedUtcMs=snapshot.startedMs,serverSettledUtcMs=snapshot.settledMs,serverSettlements=explanations)
+                        }
+                        synchronized(snapshotDisplay) {
+                            if (serverTracking === tracking) serverView=if (view!=null && tracking.state.value.collecting)
+                                tracking to view else null
+                        }
+                    }
+                }
                 ConquestAccountResult.Success(prepared.session, Unit)
             }
         }
@@ -110,7 +147,10 @@ class ConquestSession private constructor(private val userId: String, private va
     }
     private var savedState by mutableStateOf<ConquestViewState?>(null)
     private var demoState by mutableStateOf<ConquestViewState?>(null)
-    val state get() = demoState ?: savedState
+    val localState get() = demoState ?: savedState
+    val state get() = demoState ?: synchronized(snapshotDisplay) {
+        serverView?.takeIf { it.first === serverTracking && it.first.state.value.collecting && serverConnection?.isActive != false }?.second
+    } ?: savedState
     private var demo: ConquestDemo? = null
     var demoLabel by mutableStateOf<String?>(null)
         private set

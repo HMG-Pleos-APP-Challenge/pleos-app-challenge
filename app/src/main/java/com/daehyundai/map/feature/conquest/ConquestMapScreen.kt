@@ -47,7 +47,8 @@ import kotlin.math.*
     val catalog = state?.catalog ?: baseCatalog
     val current = state?.summary ?: summary
     session?.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
-    if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
+    if (session?.demoLabel == null && state?.serverLabel == null) session?.visitStatus?.let { Text(it) }
+    state?.serverLabel?.let { Text(it) }
     if (session?.sourceType == com.daehyundai.map.core.model.LocationSourceType.PLEOS && session.demoLabel == null) {
         val connectionScope = rememberCoroutineScope()
         session.serverConnection?.let { connection ->
@@ -64,8 +65,9 @@ import kotlin.math.*
         if (tracking == null) Text(com.daehyundai.map.feature.conquest.cloud.ConquestTransferState().message)
         else {
             val transfer by tracking.state.collectAsState()
+            val snapshot by tracking.snapshotState.collectAsState()
             Text(transfer.message)
-            if (transfer.collecting && transfer.issue != null) {
+            if (transfer.collecting && (transfer.issue != null || snapshot.issue != null)) {
                 OutlinedButton(onClick={ tracking.requestRetry() }) { Text("점령 저장·전송 상태 다시 확인") }
             }
         }
@@ -114,7 +116,17 @@ import kotlin.math.*
                 Text("A/B는 지도에 표시된 구간의 양 끝입니다. 화살표 방향으로 완주하면 해당 방향에 기여합니다.",
                     style = MaterialTheme.typography.bodySmall)
                 val detail = state?.roadDetails?.get(selected)
-                if (detail == null) Text("상세 기록을 불러오는 중입니다.") else {
+                if (state?.serverLabel != null) {
+                    Text("현재 소유 팀: ${state.owners[selected] ?: "중립"}")
+                    Text("마지막 서버 정산: ${state.serverSettledUtcMs?.let(::formatSettlement) ?: "첫 정산 전"}")
+                    state.serverSettlements[selected]?.let { result ->
+                        Text("집계 시작 포함: ${formatSettlement(maxOf(state.serverStartedUtcMs ?: 0L,result.timestampUtcMs-ConquestTime.WINDOW_MILLIS))}")
+                        Text("집계 끝 제외: ${formatSettlement(result.timestampUtcMs)}")
+                        state.teamIds.forEach { Text("$it · ${result.scores[it] ?: 0}점") }
+                        Text(result.reason.label)
+                    }
+                    Text("방향별 개인 기여·오전/오후 인정 여부는 이 서버 요약에서 제공하지 않습니다.")
+                } else if (detail == null) Text("상세 기록을 불러오는 중입니다.") else {
                     Text("현재 소유 팀: ${detail.ownerTeamId ?: "중립"}")
                     Text("이 방향 내 누적 인정 기여: ${detail.contributionCount}회")
                     TextButton(onClick = { detailsExpanded = !detailsExpanded }) {
@@ -159,7 +171,7 @@ import kotlin.math.*
         Text("누적 인정 기여 ${current.contributionCount}회 · 내 팀 점령 구간 ${current.ownedRoadCount}개")
         if (current.teamId == null) {
             Text("기여를 기록하려면 팀을 먼저 선택하세요. 선택 후에는 변경할 수 없습니다.")
-            if (onSelectTeam != null) state.teamIds.forEach { team ->
+            if (onSelectTeam != null && state.serverLabel == null) state.teamIds.forEach { team ->
                 OutlinedButton(onClick = { onSelectTeam(team) }) { Text(team) }
             }
         } else Text("내 팀: ${current.teamId}")
@@ -169,7 +181,7 @@ import kotlin.math.*
     }
     if (session?.demoEnabled == true && state != null) ConquestDemoControls(session, onReplayDemo)
     Text("© OpenStreetMap contributors · ODbL 1.0", style = MaterialTheme.typography.labelSmall)
-    Text(if(session?.sourceType==com.daehyundai.map.core.model.LocationSourceType.PLEOS)
+    Text(if(state?.serverLabel!=null) "서버에서 마지막으로 확인한 결과 · 기기 미전송 근거는 합산하지 않습니다." else if(session?.sourceType==com.daehyundai.map.core.model.LocationSourceType.PLEOS)
         "SDK 위치 사용 · 이 기기의 기록이며 서버 경쟁과 연동되지 않습니다." else "모의·시연 기록 · 실제 위치 기록과 분리됩니다.")
     Text("openstreetmap.org/copyright · 주차 후 확인용",
         style = MaterialTheme.typography.labelSmall)

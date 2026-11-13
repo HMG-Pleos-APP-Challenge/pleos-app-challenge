@@ -11,7 +11,7 @@ import com.daehyundai.map.navigation.Routes
 /** Entrances only. Each feature supplies its existing map renderer, not a second map implementation. */
 @Composable fun HomeScreen(conquest:ConquestSummary,exploration:ExplorationSummary,onNavigate:(String)->Unit,
     explorationPreview:@Composable ()->Unit={},conquestPreview:@Composable ()->Unit={},conquestDemo:Boolean=false,
-    conquestAvailable:Boolean=true,conquestMessage:String?=null,explorationDemo:Boolean=false) {
+    conquestAvailable:Boolean=true,conquestMessage:String?=null,explorationDemo:Boolean=false,conquestRecordLabel:String?=null) {
     Text("오늘은 어디를 탐험할까요?",style=MaterialTheme.typography.titleLarge)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun Exploration(modifier:Modifier) {
@@ -26,7 +26,7 @@ import com.daehyundai.map.navigation.Routes
             Card(modifier) { Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("도로 점령",style=MaterialTheme.typography.headlineSmall)
                 if (conquestAvailable) {
-                    Text(if(conquestDemo) "시연 · 저장되지 않음" else "이 기기의 점령 기록",
+                    Text(if(conquestDemo) "시연 · 저장되지 않음" else conquestRecordLabel ?: "이 기기의 점령 기록",
                         style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("내 팀 · ${conquest.teamId ?: "팀 미선택"}",style=MaterialTheme.typography.titleMedium)
                     conquestPreview()

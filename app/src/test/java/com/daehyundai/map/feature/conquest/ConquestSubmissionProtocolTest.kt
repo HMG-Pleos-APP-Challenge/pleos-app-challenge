@@ -117,16 +117,21 @@ class ConquestSubmissionProtocolTest {
         assertEquals("conquest_select_team_v1",rpc);assertEquals(2,calls)
         adapter.membership(owner,ConquestServerPartition.PLEOS,"roads-v1")
         assertEquals("conquest_membership_v1",rpc);assertEquals(3,calls)
+        adapter.snapshot(owner,ConquestServerPartition.PLEOS,"roads-v1")
+        assertEquals("conquest_snapshot_v1",rpc);assertEquals(4,calls)
         assertEquals(setOf("p_partition","p_catalog"),JSONObject(body).keys().asSequence().toSet())
         saved=StoredAuthSession(AccountBinding(owner.authUserId,3),10000,"new-access","new-refresh")
         assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
             adapter.submit(owner,ConquestServerPartition.PLEOS,"roads-v1",listOf(packet())))
-        assertEquals(3,calls)
+        assertEquals(4,calls)
         assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
             adapter.selectTeam(owner.copy(projectRef="tsrqponmlkjihgfedcba"),ConquestServerPartition.PLEOS,"roads-v1","red"))
-        assertEquals(3,calls)
+        assertEquals(4,calls)
         assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
             adapter.membership(owner,ConquestServerPartition.PLEOS,"roads-v1"))
-        assertEquals(3,calls)
+        assertEquals(4,calls)
+        assertEquals(ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED),
+            adapter.snapshot(owner,ConquestServerPartition.PLEOS,"roads-v1"))
+        assertEquals(4,calls)
     }
 }

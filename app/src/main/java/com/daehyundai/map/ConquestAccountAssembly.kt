@@ -13,6 +13,9 @@ internal class ConquestAccountAdapter(
     private val projectRef: String,
 ) : ConquestServerAccess {
     override fun existingAccount(): ConquestAccountResult<Unit> = map(auth.existingAccount())
+    override fun snapshot(expected: ConquestAuthSession, partition: ConquestServerPartition,
+        catalog: String): ConquestAccountResult<String> = execute(expected,"conquest_snapshot_v1",
+        JSONObject().put("p_partition",partition.wireName).put("p_catalog",catalog))
 
     override fun membership(expected: ConquestAuthSession, partition: ConquestServerPartition,
         catalog: String): ConquestAccountResult<String> = execute(expected,"conquest_membership_v1",
@@ -61,6 +64,8 @@ internal fun conquestAccountAccess(context: Context): ConquestServerAccess {
     val ref = Regex("([a-z0-9]{20})\\.supabase\\.co").matchEntire(host)?.groupValues?.get(1)
     if (!SupabaseCloud.configured || ref == null) return object : ConquestServerAccess {
         override fun existingAccount() = ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
+        override fun snapshot(expected: ConquestAuthSession, partition: ConquestServerPartition, catalog: String) =
+            ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
         override fun membership(expected: ConquestAuthSession, partition: ConquestServerPartition, catalog: String) =
             ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
         override fun <T> withCurrentAccount(expected: ConquestAuthSession, apply: () -> T) =

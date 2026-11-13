@@ -8,7 +8,7 @@ internal data class ConquestAuthSession(val projectRef: String, val authUserId: 
 
 internal enum class ConquestAccountIssue {
     NOT_CONFIGURED, NO_SESSION, ACCOUNT_CHANGED, READ_SESSION, REFRESH_SESSION, REQUEST, APPLY,
-    READ_OUTBOX, INVALID_RESPONSE, OUTBOX_FULL,
+    READ_OUTBOX, INVALID_RESPONSE, OUTBOX_FULL, READ_SNAPSHOT, STALE_SNAPSHOT,
 }
 
 internal sealed interface ConquestAccountResult<out T> {

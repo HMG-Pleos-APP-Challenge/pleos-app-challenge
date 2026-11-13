@@ -247,7 +247,8 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
                             Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},
                                 explorationPreview={ExplorationMapPreview(session)},
                                 conquestPreview={conquest?.state?.let { com.daehyundai.map.feature.conquest.ConquestMapPreview(it.catalog,it.owners,it.teamIds) }},conquestDemo=conquest?.demoLabel!=null,
-                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage,explorationDemo=sharedDriveActive)
+                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage,explorationDemo=sharedDriveActive,
+                                conquestRecordLabel=conquest?.state?.serverLabel)
                             Routes.CONQUEST_MAP -> {
                                 val error=conquestLoadError
                                 (error ?: conquest?.error)?.let { Text(it,color=MaterialTheme.colorScheme.error) }
@@ -267,7 +268,7 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
                             DetailPages.CELLS -> CellsScreen(session) { cell -> cellCol=cell.col;cellRow=cell.row;go(DetailPages.CELL) }
                             DetailPages.CELL -> CellDetailScreen(session,if(cellCol!=null && cellRow!=null) CellIndex(cellCol!!,cellRow!!) else null)
                             DetailPages.LANDMARK -> LandmarkDetailScreen(session,landmarkId,{go(DetailPages.SOURCES)})
-                            Routes.PROFILE -> if (conquestAvailable) ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
+                            Routes.PROFILE -> if (conquestAvailable) ProfileScreen(conquest?.localState?.summary ?: ConquestSummary(userId,null,0,0,null),summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
                                 {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)},
                                 conquestDemo=conquest?.demoLabel!=null,onConquest={go(Routes.CONQUEST_MAP)},regionDiscovered=session?.regionDiscovered==true)
                                 else Text("점령 요약을 불러온 뒤 프로필을 표시합니다.")
