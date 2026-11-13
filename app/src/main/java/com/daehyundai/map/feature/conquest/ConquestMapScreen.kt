@@ -2,6 +2,9 @@ package com.daehyundai.map.feature.conquest
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.daehyundai.map.core.model.ConquestSummary
@@ -43,25 +49,39 @@ import kotlin.math.*
     session?.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
     if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
-    Text("남양성지로 · 테스트 도로 3구간 / 방향별 6구간")
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     catalog?.let { roads ->
+        val labels = remember(roads) { conquestRoadLabels(roads) }
+        Text("남양읍 일반 도로 · 방향별 ${roads.roads.size}구간")
         val selected = selectedId?.takeIf { id -> roads.roads.any { it.id == id } } ?: roads.roads.first().id
-        ConquestMapPreview(roads, state?.owners.orEmpty(), state?.teamIds.orEmpty(), selected)
+        ConquestMapPreview(roads, state?.owners.orEmpty(), state?.teamIds.orEmpty(), selected, interactive = true)
         Text("방향별 구간 선택", style = MaterialTheme.typography.titleMedium)
-        roads.roads.chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                pair.forEach { road ->
-                    FilterChip(selected = road.id == selected, onClick = { selectedId = road.id },
-                        modifier = Modifier.weight(1f), label = { Text(roadLabel(roads, road)) })
-                }
+        var query by rememberSaveable { mutableStateOf("") }
+        var filter by rememberSaveable { mutableStateOf("전체") }
+        OutlinedTextField(query, { query = it }, label = { Text("도로 이름·구간 번호 검색") },
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("전체", "내 팀", "중립").forEach { value ->
+                FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(value) })
+            }
+        }
+        val filtered = remember(roads, query, filter, state?.owners, current.teamId) {
+            filterConquestRoads(roads, labels, query, filter, state?.owners.orEmpty(), current.teamId)
+        }
+        Text("검색 결과 ${filtered.size}방향 · 선택한 구간은 아래 상세에서 확인")
+        if (filtered.isEmpty()) Text(if (filter == "내 팀" && current.teamId == null)
+            "팀 선택 후 내 팀 도로를 확인할 수 있습니다." else "조건에 맞는 도로가 없습니다.")
+        else LazyColumn(Modifier.fillMaxWidth().height(220.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            items(filtered, key = { it.id }) { item ->
+                FilterChip(selected = selected == item.id, onClick = { selectedId = item.id },
+                    label = { Text("${labels[item.id]} · ${item.name}") }, modifier = Modifier.fillMaxWidth())
             }
         }
         var detailsExpanded by rememberSaveable(selected) { mutableStateOf(false) }
         val road = roads.roads.first { it.id == selected }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(roadLabel(roads, road), style = MaterialTheme.typography.titleMedium)
+                Text(labels.getValue(road.id), style = MaterialTheme.typography.titleMedium)
                 Text("${road.name} · 약 ${road.lengthMeters.toInt()}m")
                 Text("A/B는 지도에 표시된 구간의 양 끝입니다. 화살표 방향으로 완주하면 해당 방향에 기여합니다.",
                     style = MaterialTheme.typography.bodySmall)
@@ -173,19 +193,45 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
 }
 
 @Composable fun ConquestMapPreview(catalog: ConquestCatalog, owners: Map<String, String?>, teams: List<String>,
-    selectedRoadId: String? = null) {
-    val points = catalog.roads.flatMap { it.points }
+    selectedRoadId: String? = null, interactive: Boolean = false) {
+    var zoom by remember(catalog) { mutableStateOf(1f) }
+    var pan by remember(catalog) { mutableStateOf(Offset.Zero) }
+    var focusId by remember(catalog) { mutableStateOf<String?>(null) }
+    val labels = remember(catalog) { conquestRoadLabels(catalog) }
+    val textPixels = with(LocalDensity.current) { 11.dp.toPx() * fontScale }
+    val points = remember(catalog, focusId) {
+        catalog.roads.firstOrNull { it.id == focusId }?.points ?: catalog.roads.flatMap { it.points }
+    }
     val origin = points.first()
     val xScale = cos(Math.toRadians(origin.latitude))
     val minX = points.minOf { it.longitude * xScale }; val maxX = points.maxOf { it.longitude * xScale }
     val minY = points.minOf { it.latitude }; val maxY = points.maxOf { it.latitude }
-    Canvas(Modifier.fillMaxWidth().height(200.dp)
+    if (interactive) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextButton(onClick = { focusId = null; zoom = 1f; pan = Offset.Zero }) { Text("전체 보기") }
+            TextButton(onClick = { focusId = selectedRoadId; zoom = 1f; pan = Offset.Zero }, enabled = selectedRoadId != null) { Text("선택 구간 보기") }
+            TextButton(onClick = { zoom = (zoom * 1.5f).coerceAtMost(40f) }) { Text("확대") }
+            TextButton(onClick = { zoom = (zoom / 1.5f).coerceAtLeast(1f) }) { Text("축소") }
+        }
+        Text("두 손가락으로 확대·이동 · 선택 방향은 흰 테두리와 화살표로 표시")
+    }
+    Canvas(Modifier.fillMaxWidth().height(if (interactive) 280.dp else 200.dp)
+        .then(if (interactive) Modifier.pointerInput(catalog, focusId) {
+            detectTransformGestures { _, delta, factor, _ ->
+                zoom = (zoom * factor).coerceIn(1f, 40f)
+                pan = Offset((pan.x + delta.x).coerceIn(-20000f, 20000f), (pan.y + delta.y).coerceIn(-20000f, 20000f))
+            }
+        } else Modifier)
         .background(Color(0xFF192326), MaterialTheme.shapes.medium).padding(20.dp)) {
         val rangeX = max(maxX - minX, .00001); val rangeY = max(maxY - minY, .00001)
         val scale = min(size.width / rangeX, size.height / rangeY)
         val left = (size.width - rangeX * scale) / 2; val top = (size.height - rangeY * scale) / 2
-        fun screen(p: ConquestPoint) = Offset((left + (p.longitude * xScale - minX) * scale).toFloat(),
-            (top + (maxY - p.latitude) * scale).toFloat())
+        fun screen(p: ConquestPoint): Offset {
+            val base = Offset((left + (p.longitude * xScale - minX) * scale).toFloat(),
+                (top + (maxY - p.latitude) * scale).toFloat())
+            return (base - center) * zoom + center + pan
+        }
+        clipRect {
         for (road in catalog.roads) {
             val color = teamColor(owners[road.id], teams)
             road.points.zipWithNext().forEachIndexed { index, (a, b) ->
@@ -200,15 +246,16 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
                         val direction = delta / length
                         val middle = (from + to) / 2f + normal
                         val labelPosition = middle + normal * 3f
-                        val label = roadLabel(catalog, road)
+                        val label = labels.getValue(road.id)
                         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                             this.color = android.graphics.Color.WHITE
-                            textSize = 11.dp.toPx()
+                            textSize = textPixels
                             textAlign = android.graphics.Paint.Align.CENTER
                         }
                         val halfWidth = paint.measureText(label) / 2
                         val labelX = labelPosition.x.coerceIn(halfWidth, max(halfWidth, size.width - halfWidth))
-                        drawContext.canvas.nativeCanvas.drawText(label, labelX, labelPosition.y, paint)
+                        if (road.id == selectedRoadId || catalog.roads.size <= 12)
+                            drawContext.canvas.nativeCanvas.drawText(label, labelX, labelPosition.y, paint)
                         val wing = Offset(-direction.y, direction.x) * 4.dp.toPx()
                         drawLine(color, middle, middle - direction * 9.dp.toPx() + wing, 3.dp.toPx())
                         drawLine(color, middle, middle - direction * 9.dp.toPx() - wing, 3.dp.toPx())
@@ -216,15 +263,8 @@ private fun teamColor(teamId: String?, teams: List<String>): Color {
                 }
             }
         }
+        }
     }
-}
-
-private fun roadLabel(catalog: ConquestCatalog, road: DirectedRoad): String {
-    fun key(item: DirectedRoad) = listOf(item.fromNode, item.toNode).sorted().joinToString(":")
-    val groups = catalog.roads.map(::key).distinct()
-    val group = groups.indexOf(key(road)) + 1
-    val forward = catalog.roads.first { key(it) == key(road) }
-    return "구간 $group · ${if (forward.id == road.id) "A → B" else "B → A"}"
 }
 
 private fun formatSettlement(timestamp: Long): String = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'KST'")
