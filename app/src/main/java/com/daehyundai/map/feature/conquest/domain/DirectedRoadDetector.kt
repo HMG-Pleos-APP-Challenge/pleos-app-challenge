@@ -26,7 +26,9 @@ data class RoadDetectionPolicy(
  * Temporary in-progress trips are intentionally not persisted: restart mid-road cannot grant a visit.
  */
 class DirectedRoadDetector(private val catalog: ConquestCatalog, private val source: LocationSourceType,
-    private val policy: RoadDetectionPolicy = RoadDetectionPolicy()) {
+    private val policy: RoadDetectionPolicy = RoadDetectionPolicy(), useSpatialIndex: Boolean = true) {
+    private val candidateIndex = if (useSpatialIndex) RoadCandidateIndex(catalog,
+        30.0 + policy.corridorMeters + policy.entranceMeters) else null
     private data class Trip(val maxProgress: Double, val observations: Int, val reachedExit: Boolean = false)
     private class UserState {
         var previous: LocationSample? = null
@@ -63,7 +65,7 @@ class DirectedRoadDetector(private val catalog: ConquestCatalog, private val sou
         }
         val next = mutableMapOf<String, Trip>()
         val completed = mutableListOf<DirectedRoad>()
-        for (road in catalog.roads) {
+        for (road in candidateIndex?.candidates(point, state.trips.keys) ?: catalog.roads) {
             val position = road.locate(point)
             val trip = state.trips[road.id]
             val distanceToExit = road.distance(point, road.points.last())

@@ -24,7 +24,9 @@ import kotlinx.coroutines.sync.withLock
 
 data class TrackingSnapshot(val running:Boolean=false,val userId:String?=null,
     val session:ExplorationSession?=null,val conquest:com.daehyundai.map.feature.conquest.ConquestSession?=null,val policy:PleosAccuracyPolicy=PleosAccuracyPolicy.UNVERIFIED,
-    val message:String="위치 연결 준비 중",val voice:String="",val receivedCount:Int=0,val lastSampleTimestamp:Long?=null)
+    val message:String="위치 연결 준비 중",val voice:String="",val receivedCount:Int=0,val lastSampleTimestamp:Long?=null,
+    val explorationError:String?=null,val conquestError:String?=null)
+
 
 object ExplorationTracking {
     // Restoration needs both locks. Upload latency must never hold up incoming location samples.
@@ -78,22 +80,25 @@ class ExplorationTrackingService:Service() {
         job=scope.launch {
             try {
                 val policy=pleosAccuracyPolicy(this@ExplorationTrackingService)
-                val session=withContext(Dispatchers.IO) {
-                    openExplorationSession(this@ExplorationTrackingService,userId,LocationSourceType.PLEOS,policy.recordPrefix)
-                }
+                val session=try {
+                    withContext(Dispatchers.IO) {
+                        openExplorationSession(this@ExplorationTrackingService,userId,LocationSourceType.PLEOS,policy.recordPrefix).also { it.refresh() }
+                    }
+                } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
                 val conquest=try {
                     com.daehyundai.map.feature.conquest.ConquestSession.open(this@ExplorationTrackingService,userId,
                         source=LocationSourceType.PLEOS,recordPrefix=policy.recordPrefix).also { it.resetInput();it.refresh() }
                 } catch(e:CancellationException) { throw e } catch(_:Exception) { null }
                 activeConquest=conquest
-                session.refresh()
                 launch {
                     while(isActive) {
-                        session.syncCloud()
+                        session?.syncCloud()
                         delay(15_000)
                     }
                 }
-                ExplorationTracking.mutable.update { it.copy(session=session,conquest=conquest,policy=policy,message="SDK 위치 업데이트 대기") }
+                ExplorationTracking.mutable.update { it.copy(session=session,conquest=conquest,policy=policy,message="SDK 위치 업데이트 대기",
+                    explorationError=if(session==null) "탐험 기록을 열 수 없습니다" else null,
+                    conquestError=if(conquest==null) "점령 기록을 열 수 없습니다" else conquest.error) }
                 var wasConquestRecording=false
                 PleosLocationSource(userId,{ PleosSdkConnection(this@ExplorationTrackingService) },accuracyPolicy=policy)
                     .samples().retryWhen { error, attempt ->
@@ -103,23 +108,27 @@ class ExplorationTrackingService:Service() {
                         true
                     }.collect { sample ->
                         ExplorationTracking.sampleAccess.withLock {
-                            val delivery=deliverLocationSample(sample,session::acceptSdk) { fix ->
+                            val delivery=deliverLocationSample(sample,{ checkNotNull(session).acceptSdk(it) }) { fix ->
                                 if (recordConquest && shouldRecord(automatic,VehicleSafety.state.value)) {
-                                    conquest?.onSample(fix)
+                                    checkNotNull(conquest).onSample(fix)
                                     wasConquestRecording=true
                                 } else {
                                     if(wasConquestRecording) conquest?.onSample(fix.copy(accuracyMeters=null))
                                     wasConquestRecording=false
                                 }
+
                             }
                             delivery.exploration.getOrNull()?.let { announcements?.record(it) }
                             val message = when {
                                 delivery.exploration.isFailure -> "탐험 저장 오류 · 위치 수신은 계속돼요. 저장 공간을 확인해 주세요."
                                 delivery.conquest.isFailure -> "탐험 기록 중 · 점령 입력 처리 오류"
-                                else -> session.status+" · "+session.cloudStatus
+                                else -> session?.let { it.status+" · "+it.cloudStatus } ?: "탐험 기록 로딩 실패"
                             }
-                            ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=message) }
+                            ExplorationTracking.mutable.update { it.copy(receivedCount=it.receivedCount+1,lastSampleTimestamp=sample.timestampUtcMs,message=message,
+                                explorationError=if(delivery.exploration.isFailure) "탐험 입력 처리 실패" else null,
+                                conquestError=if(delivery.conquest.isFailure) "점령 입력 처리 실패" else conquest?.error) }
                         }
+
                     }
             } catch(cancelled:CancellationException) { throw cancelled
             } catch(_:Exception) {

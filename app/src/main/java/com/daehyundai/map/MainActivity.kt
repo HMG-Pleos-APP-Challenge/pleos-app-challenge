@@ -24,6 +24,8 @@ import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.conquest.ConquestMapScreen
 import com.daehyundai.map.feature.exploration.*
 import com.daehyundai.map.feature.exploration.domain.CellIndex
+import com.daehyundai.map.feature.exploration.domain.RegionBoundaryReader
+import com.daehyundai.map.feature.exploration.domain.RoadCellCatalogReader
 import com.daehyundai.map.feature.exploration.location.*
 import com.daehyundai.map.feature.exploration.tracking.ExplorationTracking
 import com.daehyundai.map.feature.home.HomeScreen
@@ -49,6 +51,9 @@ private object DetailPages {
     const val SOURCES="prototype/sources"
 }
 
+// Like the conquest memory demo, retain the paired session across activity recreation.
+private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>()
+
 @Composable private fun PrototypeApp(userId:String) {
     val context=LocalContext.current
     val vehicleCapability by com.daehyundai.map.feature.exploration.tracking.VehicleSafety.capability.collectAsState()
@@ -61,18 +66,29 @@ private object DetailPages {
     val (mockSession,mockError)=rememberExplorationSession(userId)
     val sdkState=rememberPleosExploration()
     val policy=remember(context) { pleosAccuracyPolicy(context) }
-    val (mockConquest,mockConquestError)=com.daehyundai.map.feature.conquest.rememberConquestSession(userId)
-    val (savedConquest,savedConquestError)=com.daehyundai.map.feature.conquest.rememberConquestSession(userId,LocationSourceType.PLEOS,policy.recordPrefix)
+    var conquestRetry by remember { mutableIntStateOf(0) }
+    val (mockConquest,mockConquestError)=com.daehyundai.map.feature.conquest.rememberConquestSession(userId,retryToken=conquestRetry)
+    val (savedConquest,savedConquestError)=com.daehyundai.map.feature.conquest.rememberConquestSession(userId,LocationSourceType.PLEOS,policy.recordPrefix,conquestRetry)
     val (savedSdkSession,sdkError)=rememberExplorationSession(userId,LocationSourceType.PLEOS,policy.recordPrefix)
     var sdkSelected by rememberSaveable { mutableStateOf(true) }
     val liveSession=sdkState.session.takeIf { sdkState.userId==userId }
-    val session=if(sdkSelected) liveSession ?: savedSdkSession else mockSession
+    val sharedDriveActive=!sdkSelected && mockConquest?.demoLabel!=null && sharedDriveSessions[userId]!=null
+    val session=if(sdkSelected) liveSession ?: savedSdkSession else if(sharedDriveActive) sharedDriveSessions[userId] else mockSession
     val conquest=if(sdkSelected) sdkState.conquest.takeIf { sdkState.userId==userId } ?: savedConquest else mockConquest
     val conquestSummary=conquest?.state?.summary ?: ConquestSummary(userId,null,0,0,null)
+    val conquestAvailable=conquest?.state!=null
+    val conquestLoadError=(if(sdkSelected) savedConquestError else mockConquestError).takeIf { !conquestAvailable }
+    val conquestMessage=conquestLoadError ?: conquest?.error ?: if(!conquestAvailable) "점령 기록을 불러오는 중입니다." else null
     val summary=session?.summary ?: ExplorationSummary(userId,0,0,0,0,null)
     val recording=sdkState.running && sdkState.userId==userId
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.HOME)) }
     val page=stack.last()
+    val conquestCanRestore by produceState(false, page, conquest?.state, conquest?.pendingVisitCount) {
+        value=false
+        if (page==DetailPages.SETTINGS) value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.daehyundai.map.feature.conquest.data.ConquestAccountRestore.canRestore(java.io.File(context.filesDir,"conquest"))
+        }
+    }
     fun go(target:String) { if(target!=page) stack=stack+target }
     fun back() { if(stack.size>1) stack=stack.dropLast(1) }
     var landmarkId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -83,7 +99,7 @@ private object DetailPages {
     fun startTracking() {
         runCatching { ExplorationTracking.start(context,userId,
             automatic=context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE).getBoolean("automatic",false),
-            recordConquest=context.getSharedPreferences("exploration-options",android.content.Context.MODE_PRIVATE).getBoolean("automatic",false)) }
+            recordConquest=true) }
             .onFailure { permissionMessage="기록을 시작하지 못했어요. 다시 시도해 주세요." }
     }
     val permissionLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -135,6 +151,28 @@ private object DetailPages {
         recording,sdkState.lastSampleTimestamp,
         permissionMessage.ifEmpty { sdkState.message },statusClock)
     val scope=rememberCoroutineScope()
+    var demoError by remember { mutableStateOf<String?>(null) }
+    var demoBusy by remember { mutableStateOf(false) }
+    fun replaySharedDrive(route:com.daehyundai.map.feature.conquest.DemoRoute) {
+        if (demoBusy) return
+        demoBusy=true
+        scope.launch {
+            try {
+                val demo=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val boundary=context.assets.open("exploration/namyang.boundary").reader().use(RegionBoundaryReader::read)
+                    val roads=context.assets.open("exploration/namyang.roadcells").reader().use(RoadCellCatalogReader::read)
+                    createDemoExploration(userId,boundary,roads)
+                }
+                val replayed=mockConquest?.replayDemo(route) { demo.feature.onLocation(it);demo.refresh(false) }==true
+                if(replayed) {
+                    sharedDriveSessions[userId]=demo
+                    demoError=null
+                }
+            } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch(_:Exception) { demoError="통합 시연 데이터를 불러오지 못했습니다. 다시 시도해 주세요."
+            } finally { demoBusy=false }
+        }
+    }
     BackHandler(stack.size>1) { back() }
     val title=when(page) {
         Routes.HOME -> "대현대여지도"
@@ -165,6 +203,12 @@ private object DetailPages {
                         verticalArrangement=Arrangement.spacedBy(16.dp)) {
                         val loadError=if(sdkSelected) sdkError.takeIf { liveSession==null } else mockError
                         if(loadError!=null && page!=Routes.CONQUEST_MAP) Text(loadError,color=MaterialTheme.colorScheme.error)
+                        if(sharedDriveActive) Text("탐험·점령 통합 시연 · 메모리 기록 · 저장되지 않음 · 탐험 XP/명소 시연 제외")
+                        demoError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                        if (sdkSelected && sdkState.userId==userId) {
+                            sdkState.explorationError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                            sdkState.conquestError?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                        }
                         val emulatorWithoutVehicleApi=developerEnabled && (Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish")) && vehicleCapability==com.daehyundai.map.feature.exploration.tracking.VehicleCapability.UNAVAILABLE
                         if (!recording) {
                             TextButton(onClick={requestTracking()}) { Text("위치 권한 다시 확인") }
@@ -179,15 +223,23 @@ private object DetailPages {
                         }
                         if(!com.daehyundai.map.feature.exploration.tracking.canBrowseDetails(vehicleState,emulatorWithoutVehicleApi)) {
                             Text(if(vehicleState==com.daehyundai.map.feature.exploration.tracking.VehicleInteraction.RESTRICTED)
-                                "탐험 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
-                        } else if (page in setOf(DetailPages.CELLS,DetailPages.CELL,DetailPages.LANDMARK) && session?.regionDiscovered!=true) {
+                                "운행 중에는 탐험을 자동으로 기록해요. 결과는 주차 후 확인해 주세요." else "차량 상태 확인 중 · 상세 화면은 확인 후 열립니다.")
+                        } else {
+                        if (page==Routes.PROFILE && conquestMessage!=null) Text(conquestMessage)
+                        if ((page==Routes.HOME || page==Routes.PROFILE || page==Routes.CONQUEST_MAP) &&
+                            (conquestLoadError!=null || conquest?.error!=null)) {
+                            OutlinedButton(onClick={conquestRetry++}) { Text("점령 기록 다시 불러오기") }
+                        }
+                        if (page in setOf(DetailPages.CELLS,DetailPages.CELL,DetailPages.LANDMARK) && session?.regionDiscovered!=true) {
                             Text("남양읍을 처음 발견하면 지역 도감이 열려요.")
                         } else when(page) {
+
                             Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},
                                 explorationPreview={ExplorationMapPreview(session)},
-                                conquestPreview={conquest?.state?.let { com.daehyundai.map.feature.conquest.ConquestMapPreview(it.catalog,it.owners,it.teamIds) }},conquestDemo=conquest?.demoLabel!=null)
+                                conquestPreview={conquest?.state?.let { com.daehyundai.map.feature.conquest.ConquestMapPreview(it.catalog,it.owners,it.teamIds) }},conquestDemo=conquest?.demoLabel!=null,
+                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage,explorationDemo=sharedDriveActive)
                             Routes.CONQUEST_MAP -> {
-                                val error=if(sdkSelected) savedConquestError else mockConquestError
+                                val error=conquestLoadError
                                 (error ?: conquest?.error)?.let { Text(it,color=MaterialTheme.colorScheme.error) }
                                 if(developerEnabled) {
                                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -196,7 +248,8 @@ private object DetailPages {
                                     }
                                 }
                                 ConquestMapScreen(conquestSummary,conquest?.state,
-                                    onSelectTeam={team -> scope.launch { conquest?.selectTeam(team) }},session=conquest)
+                                    onSelectTeam={team -> scope.launch { conquest?.selectTeam(team) }},session=conquest,
+                                    onReplayDemo={replaySharedDrive(it)})
                             }
                             Routes.EXPLORATION_MAP -> ExplorationMapScreen(summary,session,{go(DetailPages.REGION)},{go(DetailPages.SOURCES)})
                             DetailPages.REGION -> RegionDetailScreen(session,recordingStatus,{go(DetailPages.CELLS)},{openLandmark(it)},
@@ -204,16 +257,19 @@ private object DetailPages {
                             DetailPages.CELLS -> CellsScreen(session) { cell -> cellCol=cell.col;cellRow=cell.row;go(DetailPages.CELL) }
                             DetailPages.CELL -> CellDetailScreen(session,if(cellCol!=null && cellRow!=null) CellIndex(cellCol!!,cellRow!!) else null)
                             DetailPages.LANDMARK -> LandmarkDetailScreen(session,landmarkId,{go(DetailPages.SOURCES)})
-                            Routes.PROFILE -> ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
+                            Routes.PROFILE -> if (conquestAvailable) ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
                                 {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)},
                                 conquestDemo=conquest?.demoLabel!=null,onConquest={go(Routes.CONQUEST_MAP)},regionDiscovered=session?.regionDiscovered==true)
+                                else Text("점령 요약을 불러온 뒤 프로필을 표시합니다.")
                             DetailPages.SETTINGS -> { PrototypeSettings(recordingStatus,developerEnabled,
                                 {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)})
-                                AccountSettings(userId,canRestoreAccount((liveSession ?: savedSdkSession)?.hasLocalAchievements ?: true)) { (liveSession ?: savedSdkSession)?.syncCloud() }
+                                AccountSettings(userId,conquestCanRestore && canRestoreAccount((liveSession ?: savedSdkSession)?.hasLocalAchievements ?: true)) { (liveSession ?: savedSdkSession)?.syncCloud() }
+
                             }
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,
                                 {sdkSelected=it},{scenario -> scope.launch { mockSession?.replay(scenario) }}) else Text("개발자 도구는 개발 빌드에서만 열 수 있어요.")
                             DetailPages.SOURCES -> MapSources()
+                        }
                         }
                     }
                 }
