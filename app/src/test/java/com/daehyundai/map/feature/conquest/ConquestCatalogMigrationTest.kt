@@ -118,4 +118,17 @@ class ConquestCatalogMigrationTest {
         assertTrue(feature.selectTeam("u", "red"))
         assertFalse(ConquestAccountRestore.canRestore(folder.root))
     }
+
+    @Test fun prototypeMockOwnerIsPreservedAndNeverImportedIntoAnotherInstallation() {
+        seed()
+        val original = legacy().readBytes()
+        val directory = ConquestCatalogMigration.userDirectory(folder.root, "new-installation", source, old)
+        assertNotEquals(folder.root, directory)
+        val bundle = ConquestCatalogMigration.prepare(directory, "mock", "new-installation", setOf("red"), source, old, next, true)
+        assertNull(FileConquestStore(bundle.record).read())
+        assertArrayEquals(original, legacy().readBytes())
+        assertEquals(directory, ConquestCatalogMigration.userDirectory(folder.root, "new-installation", source, old))
+        assertEquals(folder.root, ConquestCatalogMigration.userDirectory(folder.root, "u", source, old))
+        assertEquals(folder.root, ConquestCatalogMigration.userDirectory(folder.root, "other", LocationSourceType.PLEOS, old))
+    }
 }

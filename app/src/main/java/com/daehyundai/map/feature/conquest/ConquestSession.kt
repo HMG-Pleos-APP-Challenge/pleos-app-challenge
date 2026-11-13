@@ -150,7 +150,8 @@ class ConquestSession private constructor(private val userId: String, private va
             val catalog = context.assets.open("conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
             val prefix=if(source==LocationSourceType.MOCK) "mock" else recordPrefix.also { require(it in setOf("pleos","pleos-emulator")) }
             val legacy = context.assets.open("conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
-            val bundle = ConquestCatalogMigration.prepare(File(context.filesDir, "conquest"), prefix,
+            val directory = ConquestCatalogMigration.userDirectory(File(context.filesDir, "conquest"), userId, source, legacy)
+            val bundle = ConquestCatalogMigration.prepare(directory, prefix,
                 userId, teams.toSet(), source, legacy, catalog, allowProgress = true)
             val file = bundle.record
             sessions[file.canonicalPath]?.let {

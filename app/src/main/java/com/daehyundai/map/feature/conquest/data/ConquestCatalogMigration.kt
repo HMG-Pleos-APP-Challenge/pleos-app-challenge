@@ -13,6 +13,20 @@ import java.security.MessageDigest
 object ConquestCatalogMigration {
     data class Bundle(val record: File, val pending: File)
 
+    /** Prototype mock records may belong to a fixed demo ID, not this installation.
+     * Preserve those records and start this user's mock namespace rather than importing another owner.
+     */
+    fun userDirectory(directory: File, userId: String, source: LocationSourceType,
+        old: ConquestCatalog): File {
+        if (source != LocationSourceType.MOCK) return directory
+        val record = FileConquestStore(File(directory, "mock-${old.version}.bin")).read() ?: return directory
+        require(record.datasetVersion == old.version && record.source == source)
+        if (record.teams.none { it.userId != userId } && record.events.none { it.userId != userId }) return directory
+        val key = MessageDigest.getInstance("SHA-256").digest(userId.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return File(directory, "mock-users/$key")
+    }
+
     fun prepare(directory: File, prefix: String, userId: String, teams: Set<String>,
         source: LocationSourceType, old: ConquestCatalog, next: ConquestCatalog,
         allowProgress: Boolean = false): Bundle =
