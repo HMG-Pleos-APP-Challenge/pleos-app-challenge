@@ -12,15 +12,25 @@
 - receipt와 인정 기여의 같은 트랜잭션 기록, 예외 시 함께 롤백.
 - 비노출 schema, RLS, 클라이언트 테이블/함수 권한 차단.
 
-테스트는 실제 앱 assets의1,453방향 ID를 읽어 catalog에 넣는다. geometry와 좌표 검증은 아직 추가하지 않았다. 기존6방향 ID 포함도 확인한다.
+원장 테스트는 실제 앱 assets의1,453방향 ID를 읽어 catalog에 넣고 기존6방향 ID 포함도 확인한다. 후속 proof 시험은 카탈로그 geometry도 읽어 서버에서 경로를 재생한다.
 
 ## 신뢰 경계와 미구현
 
-`accept_verified`의 사용자 ID·검증 근거 해시·판정기 버전은 **신뢰된 서버 검증기/시험 대역** 입력이다. 해시 문자열의 형식 검사로 실제 주행이 검증되는 것은 아니다. 서버 완주 검증기와 인증 gateway를 만들기 전 앱 이벤트를 이 함수에 전달하면 안 된다.
+`accept_verified`의 사용자 ID·검증 근거 해시·판정기 버전은 **신뢰된 서버 검증기/시험 대역** 입력이다. 해시 문자열의 형식 검사로 실제 주행이 검증되는 것은 아니다. `proof-prototype.sql`의 격리 판정기는 추가했지만 인증 gateway와 앱 연결 전이므로 앱 이벤트를 이 내부 원장에 직접 전달하면 안 된다.
 
 함수들은 SECURITY INVOKER이며 PUBLIC/anon/authenticated의 실행권한과 schema/table 권한을 회수했다. 외부 호출의 auth.uid 확인, 팀 선택 RPC의 서버 선택 시각, 배치 응답/부분 ACK 형식은 후속 gateway에서 구현한다. 시험 함수의 `p_test_admitted_ms`는 경계 테스트 전용이고 앱/API에 노출하면 안 된다. 생략하면 잠금 획득 후 clock_timestamp를 사용한다.
 
-활성 catalog 교체·정산·소유 상태/revision·누적 캐시·서버 큐·원문 근거 수집/삭제는 미구현이다. 초기 고정 catalog의 내부 원장만 검증한다. receipt의 최종 거부 코드 등은 시험 계약이며 공통 wire API 승인으로 간주하지 않는다. 보관 기간·실제 근거 규격·시험 환경·운영 담당은 기존 미결을 유지한다.
+활성 catalog 교체·정산·소유 상태/revision·누적 캐시·서버 큐·앱의 근거 수집은 미구현이다. receipt의 최종 거부 코드 등은 시험 계약이며 공통 wire API 승인으로 간주하지 않는다. 기기 근거 보관·용량·운영 환경/담당은 미결을 유지한다.
+
+## 서버 근거 재판정 프로토타입
+
+2026-11-13 사용자는 해당 통과의 최소 좌표·시각·정확도를 제출하고 판정 후 서버 원문을 보관하지 않는 방향으로 진행하도록 선택했다. `proof-prototype.sql`은 위치 배열을 함수 안에서만 재생하고 원장에는 근거 SHA-256·판정기 버전과 결과만 남긴다. 영구 위치 cursor/후보를 만들지 않는다. 별도 road_geometry는 공개 도로 카탈로그이며 사용자 통과 좌표가 아니다. 운영 전 HTTP/DB 로그의 본문 보관도 별도로 확인해야 한다.
+
+도로별 투영·30m 끝점 연장·입구/출구·10m 정확도·15초 공백·60m 이동·40m/s·U턴/이탈·겹친 완주 차단을 기존 DirectedRoadDetector와 같은 입력으로 비교한다. 최소 근거는 입구 관측부터 실제 출구 진출까지이며 하나의 완료를 마지막 샘플에서 증명해야 한다. source/user 정보는 미래 인증/입력 경계가 책임지며 클라이언트 좌표만으로 물리적 주행의 진위를 보증하지 않는다.
+
+같은 `docs/data/conquest-proof-fixtures.json`을 PostgreSQL replay와 Kotlin ServerProofParityTest가 읽는다. 18개 사례에는 양방향/중간 출발/U턴/공백/정확도/중복/역순/겹친 도로/교차로 진출/굽은 도로와 실제 전역1,453방향 카탈로그의 한 경로가 있다. 실제 카탈로그 유래 좌표의 출처·라이선스는 기존 docs/data/CONQUEST-DATA-NOTICE.md를 따른다.
+
+내부 submit_proof는 방향/eventId/완료시각을 판정 결과와 대조한 뒤 원장으로 넘긴다. 잘못된 근거의 최종 거부도 receipt로 남겨 동일 ID·다른 근거를 충돌 처리한다. 형식 오류/범위 초과는 SQL 요청 실패다. 배열 상한2048은 격리 시험용 방어 한도이며 승인된 기기 큐/최종 API 용량 정책이 아니다. JSON 수치 정규화·프로토콜/배치 규격과 실제 인증 gateway는 후속이다.
 
 ## 실행
 
@@ -30,12 +40,15 @@
 cd supabase
 npm ci --ignore-scripts --no-audit --no-fund
 node tests/conquest-ledger.mjs
+node tests/conquest-proof.mjs
 node tests/exploration.mjs
 ```
 
-두 파일은 각각 새 in-memory PostgreSQL/PostGIS를 만들고 종료 시 닫는다. URL/키/원격 DB 연결을 읽지 않는다. 점령 시험은 기존 sql-editor schema/catalog도 함께 적용해 함수 본문·245개 탐험 target 보존을 확인한다. 단일 PGlite 연결의 순차 시험이며 실제 다중 DB 연결 경쟁·Supabase Auth/PostgREST·두 기기를 검증한 것은 아니다.
+각 시험은 새 in-memory PostgreSQL/PostGIS를 만들고 종료 시 닫는다. URL/키/원격 DB 연결을 읽지 않는다. 점령 시험은 기존 sql-editor schema/catalog도 함께 적용한다. 단일 PGlite 연결의 순차 시험이며 실제 다중 DB 연결 경쟁·Supabase Auth/PostgREST·두 기기를 검증한 것은 아니다.
 
 2026-11-13 실행 결과: 점령17개 검사 전부 통과, 기존 탐험 서버 테스트 종료코드0/PASS. 오류 주입 시 receipt/기여 동시 롤백, 양쪽 클라이언트 역할 접근 차단 포함. Android 소스 변경이 없어 이번에는 Gradle을 다시 실행하지 않았다.
+
+후속 근거 판정 최종 검증(2026-11-13): 원장17개/근거24개(공통 입력18개 포함) 및 기존 탐험 서버 시험 PASS. Kotlin의 공통 입력18개 대조를 포함한 전체202개 단위 테스트 실패/오류0, lintDebug/assembleDebug 성공(Warning5/Information1). 생성 fixture 재생성 해시 일치. 사용자 좌표를 수집하거나 운영 DB/실제 Auth/HTTP·기기 업로드를 실행하지 않았다. 모든 입력의 동등성·다중 연결 경쟁·최종 API 성능까지 검증한 결과는 아니다.
 
 ## 운영용 전환 전에 할 일
 
