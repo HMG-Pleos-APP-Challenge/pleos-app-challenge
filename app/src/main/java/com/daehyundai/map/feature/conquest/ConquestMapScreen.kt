@@ -50,6 +50,12 @@ import kotlin.math.*
     if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(session?.demoLabel) {
+        if (session?.demoLabel != null) {
+            val demoId = "osm:way:55055096:v24:414929156:4641680981"
+            if (catalog?.roads?.any { it.id == demoId } == true) selectedId = demoId
+        }
+    }
     catalog?.let { roads ->
         val labels = remember(roads) { conquestRoadLabels(roads) }
         Text("남양읍 일반 도로 · 방향별 ${roads.roads.size}구간")
