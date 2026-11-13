@@ -4,6 +4,7 @@ import java.io.*
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.UUID
+import java.security.MessageDigest
 
 /** Server-eligible input only. MOCK never has an account binding. */
 internal enum class ConquestServerPartition(val wireName: String) {
@@ -24,6 +25,12 @@ internal data class ConquestAccountBinding(
         require(installationId.isNotBlank() && installationId.length <= 256)
         require(catalogVersion.isNotBlank() && catalogVersion.length <= 256)
     }
+}
+
+internal fun ConquestAccountBinding.storageKey():String {
+    val values=listOf(projectRef,authUserId,installationId,partition.name,catalogVersion).joinToString("\u0000")
+    return MessageDigest.getInstance("SHA-256").digest(values.toByteArray(Charsets.UTF_8))
+        .joinToString("") {"%02x".format(it.toInt() and 255)}
 }
 
 /** A dedicated file per binding scope. No delete, migration or account replacement operation. */

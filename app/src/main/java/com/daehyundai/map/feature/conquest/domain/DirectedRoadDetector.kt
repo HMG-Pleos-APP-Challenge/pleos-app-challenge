@@ -3,6 +3,9 @@ package com.daehyundai.map.feature.conquest.domain
 import com.daehyundai.map.core.model.*
 import kotlin.math.max
 
+/** Optional, bounded proof output for the server pipeline; null means capture capacity was exceeded. */
+internal data class CapturedRoadProof(val event: RoadVisited, val samples: List<LocationSample>?)
+
 data class RoadDetectionPolicy(
     val maxAccuracyMeters: Float = 10f,
     val corridorMeters: Double = 20.0,
@@ -26,19 +29,31 @@ data class RoadDetectionPolicy(
  * Temporary in-progress trips are intentionally not persisted: restart mid-road cannot grant a visit.
  */
 class DirectedRoadDetector(private val catalog: ConquestCatalog, private val source: LocationSourceType,
-    private val policy: RoadDetectionPolicy = RoadDetectionPolicy(), useSpatialIndex: Boolean = true) {
+    private val policy: RoadDetectionPolicy = RoadDetectionPolicy(), useSpatialIndex: Boolean = true,
+    private val captureProof: Boolean = false, private val maxProofSamples: Int = 2048) {
+    init { require(maxProofSamples in 3..2048 && (!captureProof || source==LocationSourceType.PLEOS)) }
     private val candidateIndex = if (useSpatialIndex) RoadCandidateIndex(catalog,
         30.0 + policy.corridorMeters + policy.entranceMeters) else null
-    private data class Trip(val maxProgress: Double, val observations: Int, val reachedExit: Boolean = false)
+    private data class Trip(val maxProgress: Double, val observations: Int, val reachedExit: Boolean = false,
+        val proof: List<LocationSample>? = null)
     private class UserState {
         var previous: LocationSample? = null
         var trips = mutableMapOf<String, Trip>()
     }
     private val users = mutableMapOf<String, UserState>()
+    private val lastProofs=mutableMapOf<String,List<LocationSample>?>()
+    private fun append(proof:List<LocationSample>?,sample:LocationSample)=
+        if(proof!=null && proof.size<maxProofSamples) proof+sample else null
 
-    @Synchronized fun reset(userId: String) { users.remove(userId) }
+    @Synchronized internal fun onSampleWithProof(sample:LocationSample):List<CapturedRoadProof> {
+        check(captureProof)
+        return onSample(sample).map {CapturedRoadProof(it,lastProofs[it.eventId])}
+    }
+
+    @Synchronized fun reset(userId: String) { users.remove(userId);lastProofs.clear() }
 
     @Synchronized fun onSample(sample: LocationSample): List<RoadVisited> {
+        lastProofs.clear()
         if (sample.userId.isBlank()) return emptyList()
         val state = users.getOrPut(sample.userId) { UserState() }
         val previous = state.previous
@@ -65,6 +80,7 @@ class DirectedRoadDetector(private val catalog: ConquestCatalog, private val sou
         }
         val next = mutableMapOf<String, Trip>()
         val completed = mutableListOf<DirectedRoad>()
+        val completedProofs=mutableMapOf<String,List<LocationSample>?>()
         for (road in candidateIndex?.candidates(point, state.trips.keys) ?: catalog.roads) {
             val position = road.locate(point)
             val trip = state.trips[road.id]
@@ -74,6 +90,7 @@ class DirectedRoadDetector(private val catalog: ConquestCatalog, private val sou
                 distanceToExit > policy.entranceMeters + accuracy &&
                 position.progressMeters >= road.lengthMeters - policy.reverseToleranceMeters) {
                 completed.add(road)
+                if(captureProof) completedProofs[road.id]=append(trip.proof,sample)
                 continue
             }
             if (position.distanceMeters + accuracy > policy.corridorMeters) continue
@@ -81,24 +98,29 @@ class DirectedRoadDetector(private val catalog: ConquestCatalog, private val sou
                 // Starting in the middle never arms a trip; uncertainty must fit within the entrance gate.
                 if (position.progressMeters >= -policy.entranceMeters + accuracy &&
                     position.progressMeters <= policy.entranceMeters - accuracy) {
-                    next[road.id] = Trip(position.progressMeters, 1)
+                    next[road.id] = Trip(position.progressMeters, 1,proof=if(captureProof) listOf(sample) else null)
                 }
             } else if (position.progressMeters >= trip.maxProgress - policy.reverseToleranceMeters) {
                 val progress = max(trip.maxProgress, position.progressMeters)
                 if (position.progressMeters >= road.lengthMeters + max(2.0, accuracy.toDouble()) && trip.observations >= 3) {
                     completed.add(road)
+                    if(captureProof) completedProofs[road.id]=append(trip.proof,sample)
                 } else {
                     val reachedExit = trip.reachedExit ||
                         (position.progressMeters >= road.lengthMeters - accuracy &&
                             distanceToExit <= policy.entranceMeters - accuracy)
-                    next[road.id] = Trip(progress, trip.observations + 1, reachedExit)
+                    next[road.id] = Trip(progress, trip.observations + 1, reachedExit,
+                        if(captureProof) append(trip.proof,sample) else null)
                 }
             }
         }
         state.trips = next
         // Overlapping indistinguishable roads must not produce multiple contributions from one movement.
         if (completed.size != 1) return emptyList()
-        return completed.map { road -> RoadVisited("${sample.eventId}:conquest:${road.id}", sample.userId,
-            road.id, sample.timestampUtcMs, sample.source) }
+        return completed.map { road ->
+            val event=RoadVisited("${sample.eventId}:conquest:${road.id}",sample.userId,road.id,sample.timestampUtcMs,sample.source)
+            if(captureProof) lastProofs[event.eventId]=completedProofs[road.id]
+            event
+        }
     }
 }
