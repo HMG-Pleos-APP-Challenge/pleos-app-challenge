@@ -81,14 +81,33 @@ class LocalConquestFeature(
 
     override suspend fun onRoadVisited(event: RoadVisited) { accept(event) }
 
-    override suspend fun getSummary(userId: String): ConquestSummary = synchronized(this) {
+    override suspend fun getSummary(userId: String): ConquestSummary = readSummary(userId)
+
+    @Synchronized fun readSummary(userId: String): ConquestSummary {
         advance()
-        settlement.summary(userId)
+        return settlement.summary(userId)
     }
 
     @Synchronized fun owners(): Map<String, String?> {
         advance()
         return settlement.currentOwners()
+    }
+
+    /** Display accepted contributions without changing shared contracts or storage. */
+    @Synchronized fun roadDetails(userId: String): Map<String, ConquestRoadDetail> {
+        require(userId.isNotBlank())
+        advance()
+        val completed = ConquestTime.latestSettlement(record.observedUtcMs)
+            .takeIf { it > ConquestTime.latestSettlement(record.startedUtcMs) }
+        val owners = settlement.currentOwners()
+        val today = ConquestTime.halfDay(now())
+        val explanations = settlement.lastExplanations()
+        return segments.associateWith { segment ->
+            val own = record.events.filter { it.userId == userId && it.roadSegmentId == segment }
+            val periods = own.map { ConquestTime.halfDay(it.timestampUtcMs) }.filter { it.date == today.date }
+            ConquestRoadDetail(owners[segment], completed, own.size, today.date, today.afternoon,
+                periods.any { !it.afternoon }, periods.any { it.afternoon }, explanations[segment])
+        }
     }
 
     private fun advance() {
@@ -98,3 +117,10 @@ class LocalConquestFeature(
         }
     }
 }
+
+data class ConquestRoadDetail(
+    val ownerTeamId: String?, val settledUtcMs: Long?, val contributionCount: Int,
+    val dateKst: java.time.LocalDate, val currentAfternoon: Boolean,
+    val morningAccepted: Boolean, val afternoonAccepted: Boolean,
+    val settlement: RoadSettlementExplanation?,
+)

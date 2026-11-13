@@ -7,6 +7,8 @@ import com.daehyundai.map.core.data.FileProgressRepository
 import com.daehyundai.map.feature.exploration.data.*
 import com.daehyundai.map.feature.exploration.domain.*
 import java.io.File
+import com.daehyundai.map.feature.exploration.tracking.ExplorationTracking
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,9 +33,19 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
     private var confirmedSnapshot:com.daehyundai.map.feature.exploration.cloud.CloudSnapshot?=null
     var hasLocalAchievements by mutableStateOf(false)
         private set
-    var localOnlyCells by mutableIntStateOf(0)
+    val usesServerProgress get() = cloud != null && com.daehyundai.map.feature.exploration.cloud.SupabaseCloud.configured
+    var pendingCells by mutableStateOf<Set<CellIndex>>(emptySet())
         private set
-    suspend fun syncCloud() {
+    var regionDiscovered by mutableStateOf(false)
+        private set
+
+    fun cellLabel(cell: CellIndex): String = when {
+        cell in pendingCells -> "기기 기록 · 동기화 대기"
+        cell !in unlockedCells -> "미탐험"
+        usesServerProgress -> "서버 확정"
+        else -> "기기 기록 완료"
+    }
+    suspend fun syncCloud() = ExplorationTracking.syncAccess.withLock {
         try {
             cloud?.sync()?.let { snapshot ->
                 withContext(Dispatchers.IO) { feature.mergeConfirmed(userId,snapshot.grants) }
@@ -57,14 +69,21 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
                 feature.landmarkCollection?.summary(userId))
         }
         hasLocalAchievements=loaded.first.discoveredRegionCount>0 || loaded.second.isNotEmpty() || (loaded.third?.unlockedCount ?: 0)>0
-        if(cloud!=null && com.daehyundai.map.feature.exploration.cloud.SupabaseCloud.configured) {
-            if(confirmedSnapshot==null) confirmedSnapshot=cloud.cached()
+        if(usesServerProgress) {
+            if(confirmedSnapshot==null) confirmedSnapshot=cloud?.cached()
             val xp=confirmedSnapshot?.xp ?: 0L
             progress=UserProgress(userId,xp,(xp/100+1).toInt())
             summary=com.daehyundai.map.feature.exploration.cloud.confirmedSummary(userId,loaded.first.totalExplorableUnitCount,confirmedSnapshot)
-            localOnlyCells=(loaded.second.size-summary.exploredUnitCount).coerceAtLeast(0)
-        } else summary=loaded.first
-        unlockedCells = loaded.second
+            val serverIds = confirmedSnapshot?.grants.orEmpty().filter { it.kind == "cell" }.map { it.targetId }.toSet()
+            val catalog = feature.cellExploration?.catalog
+            val confirmed = catalog?.let { data -> data.cells.keys.filterTo(mutableSetOf()) { data.cellId(it) in serverIds } }.orEmpty()
+            pendingCells = loaded.second - confirmed
+            unlockedCells = loaded.second + confirmed
+        } else {
+            summary = loaded.first
+            unlockedCells = loaded.second
+        }
+        regionDiscovered = loaded.first.discoveredRegionCount > 0 || summary.discoveredRegionCount > 0
         landmarkSummary = loaded.third
     }
 
@@ -168,7 +187,8 @@ class ExplorationSession(private val userId: String, val feature: LocalExplorati
 }
 
 internal fun openExplorationSession(context: Context, userId: String,
-    source: LocationSourceType = LocationSourceType.MOCK, sdkRecordPrefix: String = "pleos"): ExplorationSession {
+    source: LocationSourceType = LocationSourceType.MOCK, sdkRecordPrefix: String = "pleos",
+    remote:com.daehyundai.map.feature.exploration.cloud.ExplorationCloud?=null): ExplorationSession {
     require(sdkRecordPrefix in setOf("pleos", "pleos-emulator"))
     val prefix = if (source == LocationSourceType.MOCK) "mock" else sdkRecordPrefix
     val boundary = context.assets.open("exploration/namyang.boundary").reader().use(RegionBoundaryReader::read)
@@ -183,5 +203,5 @@ internal fun openExplorationSession(context: Context, userId: String,
         FileLandmarkUnlockStore(File(context.filesDir,"exploration/$prefix-landmarks.bin"),landmarks.version,source))
     val rewards=ExplorationRewards(FileProgressRepository(File(context.filesDir,"progress/$prefix-grid500-xp.bin")),prefix)
     return ExplorationSession(userId, LocalExplorationFeature(boundary, source, store, cells, collection), source,rewards,
-        if(source == LocationSourceType.PLEOS) com.daehyundai.map.feature.exploration.cloud.CloudSync(context,userId,prefix,catalog.version) else null)
+        if(source == LocationSourceType.PLEOS) com.daehyundai.map.feature.exploration.cloud.CloudSync(context,userId,prefix,catalog.version,remote ?: com.daehyundai.map.feature.exploration.cloud.SupabaseCloud(context)) else null)
 }

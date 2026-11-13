@@ -22,7 +22,7 @@ private val ProfileMint = Color(0xFF9DE4CF)
 
 /** Presentation only: retain the shared progress contract, reward rules and navigation callbacks. */
 @Composable fun ProfileScreen(conquest:ConquestSummary,exploration:ExplorationSummary,progress:UserProgress,
-    landmarks:LandmarkCollectionSummary?=null,onRegion:()->Unit={},onCells:()->Unit={},onLandmark:(String)->Unit={},onSettings:()->Unit={},conquestDemo:Boolean=false,onConquest:()->Unit={}) {
+    landmarks:LandmarkCollectionSummary?=null,onRegion:()->Unit={},onCells:()->Unit={},onLandmark:(String)->Unit={},onSettings:()->Unit={},conquestDemo:Boolean=false,onConquest:()->Unit={},regionDiscovered:Boolean=exploration.discoveredRegionCount>0) {
     Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF203B36)),shape=RoundedCornerShape(24.dp),modifier=Modifier.fillMaxWidth()) {
         Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(20.dp)) {
@@ -78,9 +78,11 @@ private val ProfileMint = Color(0xFF9DE4CF)
     }
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
         Text("명소 도감",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
-        landmarks?.let { Text("${it.unlockedCount} / ${it.totalCount} 수집",color=ProfileMint) }
+        if(regionDiscovered) landmarks?.let { Text("${it.unlockedCount} / ${it.totalCount} 수집",color=ProfileMint) }
     }
-    if(landmarks==null) {
+    if(!regionDiscovered) {
+        Text("남양읍을 처음 발견하면 명소 도감이 열려요.")
+    } else if(landmarks==null) {
         Text("명소 기록을 불러오고 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)
     } else if(landmarks.cards.isEmpty()) {
         Text("이 지역의 명소를 준비하고 있어요.",color=MaterialTheme.colorScheme.onSurfaceVariant)

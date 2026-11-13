@@ -11,6 +11,9 @@ enum class VehicleCapability { CHECKING, AVAILABLE, UNAVAILABLE }
 enum class VehicleInteraction { UNKNOWN, UNRESTRICTED, RESTRICTED }
 fun shouldRecord(automatic:Boolean,state:VehicleInteraction)=!automatic || state==VehicleInteraction.RESTRICTED
 
+fun canBrowseDetails(state:VehicleInteraction,debugEmulatorWithoutCarApi:Boolean) =
+    state == VehicleInteraction.UNRESTRICTED || debugEmulatorWithoutCarApi
+
 /** AAOS safety policy, never GPS-derived parking. Shared, reference-counted main-thread connection. */
 object VehicleSafety {
     private val mutable=MutableStateFlow(VehicleInteraction.UNKNOWN)

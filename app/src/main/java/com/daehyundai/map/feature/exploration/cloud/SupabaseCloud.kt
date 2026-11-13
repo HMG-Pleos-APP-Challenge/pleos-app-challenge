@@ -37,12 +37,14 @@ private class SessionVault(context:Context,namespace:String="") {
     }
 }
 
-class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud {
+class SupabaseCloud(context:Context,sessionNamespace:String="",
+    private val requestOverride:((String,JSONObject,String?,String)->String)?=null):ExplorationCloud {
     private val appContext=context.applicationContext
     private val vault=SessionVault(context,sessionNamespace)
     private val endpoint=BuildConfig.SUPABASE_URL.trimEnd('/')
     private val key=BuildConfig.SUPABASE_PUBLISHABLE_KEY
     private fun request(path:String,body:JSONObject,token:String?=null,method:String="POST"):String {
+        requestOverride?.let { return it(path,body,token,method) }
         require(endpoint.startsWith("https://"))
         val connection=URL(endpoint+path).openConnection() as HttpURLConnection
         try {
@@ -91,7 +93,6 @@ class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud
         Unit
     }
     fun restore(email:String,password:String,localOwner:String):Unit=synchronized(lock) {
-        check(!com.daehyundai.map.feature.exploration.tracking.ExplorationTracking.state.value.running) { "기록 중에는 계정을 바꿀 수 없습니다" }
         for(prefix in listOf("pleos","pleos-emulator")) for(kind in listOf("discoveries","cells","landmarks")) {
             val file=java.io.File(appContext.filesDir,"exploration/$prefix-$kind.bin")
             if(file.exists()) java.io.DataInputStream(java.io.FileInputStream(file)).use {
@@ -99,16 +100,14 @@ class SupabaseCloud(context:Context,sessionNamespace:String=""):ExplorationCloud
                 check(it.readInt()==0) { "현재 기기의 기록은 이메일 연결로 보관해 주세요" }
             }
         }
-        val conquestFiles=java.io.File(appContext.filesDir,"conquest").listFiles().orEmpty()
-        check(conquestFiles.none { (it.name.startsWith("pleos-") || it.name.startsWith("pleos-emulator-")) && it.length()>0 }) {
-            "점령 기록이 있는 기기는 현재 계정에 이메일을 연결해 주세요"
-        }
         val cache=CloudCache(appContext)
         try { check(listOf("pleos","pleos-emulator").all { cache.count(localOwner,it)==0 }) { "미전송 기록을 먼저 동기화해 주세요" } }
         finally { cache.close() }
-        val value=JSONObject(request("/auth/v1/token?grant_type=password",JSONObject().put("email",email.trim()).put("password",password)))
-        check(!value.getJSONObject("user").isNull("email_confirmed_at"))
-        save(value)
+        com.daehyundai.map.feature.conquest.data.ConquestAccountRestore.restoreWhenEmpty(java.io.File(appContext.filesDir,"conquest")) {
+            val value=JSONObject(request("/auth/v1/token?grant_type=password",JSONObject().put("email",email.trim()).put("password",password)))
+            check(!value.getJSONObject("user").isNull("email_confirmed_at"))
+            save(value)
+        }
     }
     companion object {
         private val lock=Any()

@@ -2,6 +2,8 @@ package com.daehyundai.map.feature.conquest
 
 import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.conquest.data.LocalConquestFeature
+import com.daehyundai.map.feature.conquest.data.PendingVisitsStore
+import com.daehyundai.map.feature.conquest.data.MemoryPendingVisitsStore
 import com.daehyundai.map.feature.conquest.domain.*
 
 data class ProcessedRoadVisit(val event: RoadVisited, val result: ContributionResult)
@@ -10,9 +12,16 @@ data class ProcessedRoadVisit(val event: RoadVisited, val result: ContributionRe
  * Use a single instance off the UI thread. A failed disk write keeps the completed visit pending for retry.
  */
 class ConquestLocationPipeline(private val feature: LocalConquestFeature, catalog: ConquestCatalog,
-    source: LocationSourceType, policy: RoadDetectionPolicy = RoadDetectionPolicy()) {
+    source: LocationSourceType, policy: RoadDetectionPolicy = RoadDetectionPolicy(),
+    private val pendingStore: PendingVisitsStore = MemoryPendingVisitsStore(),
+    private val clock: () -> Long = System::currentTimeMillis) {
     private val detector = DirectedRoadDetector(catalog, source, policy)
-    private val pending = ArrayDeque<RoadVisited>()
+    private val pending = ArrayDeque(pendingStore.read().also { events ->
+        require(events.all { it.source == source && catalog.roads.any { road -> road.id == it.roadSegmentId } })
+    })
+    val pendingCount: Int @Synchronized get() = pending.size
+    var lastResult: ProcessedRoadVisit? = null
+        private set
 
     @Synchronized fun resetObservations(userId:String) { detector.reset(userId) }
 
@@ -23,23 +32,36 @@ class ConquestLocationPipeline(private val feature: LocalConquestFeature, catalo
         return result
     }
 
-    @Synchronized fun onSample(sample: LocationSample): List<ProcessedRoadVisit> {
+    /** Also called on open/refresh, so recovery needs no new GPS sample. */
+    @Synchronized fun retryPending(): List<ProcessedRoadVisit> {
         val results = mutableListOf<ProcessedRoadVisit>()
-        fun drain() {
-            while (pending.isNotEmpty()) {
-                val event = pending.first()
-                val result = feature.accept(event) // On failure, leave the event in the queue.
-                pending.removeFirst()
-                results.add(ProcessedRoadVisit(event, result))
+        if (pending.isEmpty()) return results
+        // A prior journal write may have failed. Persist before applying any event.
+        pendingStore.write(pending.toList())
+        while (pending.isNotEmpty()) {
+            val event = pending.first()
+            val result = feature.accept(event)
+            if (result == ContributionResult.FUTURE && event.timestampUtcMs - clock() <= 5_000L) {
+                lastResult = ProcessedRoadVisit(event, result)
+                break
             }
+            pendingStore.write(pending.drop(1))
+            pending.removeFirst()
+            val processed = ProcessedRoadVisit(event, result)
+            lastResult = processed
+            results.add(processed)
         }
-        drain()
+        return results
+    }
+
+    @Synchronized fun onSample(sample: LocationSample): List<ProcessedRoadVisit> {
+        val results = retryPending().toMutableList()
         if (feature.teamOf(sample.userId) == null) {
             detector.reset(sample.userId)
             return results
         }
         pending.addAll(detector.onSample(sample))
-        drain()
+        results.addAll(retryPending())
         return results
     }
 }

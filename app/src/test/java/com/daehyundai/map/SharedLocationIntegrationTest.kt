@@ -17,7 +17,7 @@ import org.junit.rules.TemporaryFolder
 class SharedLocationIntegrationTest {
     @get:Rule val temp=TemporaryFolder()
     private val source=LocationSourceType.PLEOS
-    private val roads=File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+    private val roads=File("src/main/assets/conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
     private val base=Instant.parse("2026-11-11T04:00:00Z").toEpochMilli()
     private fun samples():List<LocationSample> {
         val road=roads.roads.first()

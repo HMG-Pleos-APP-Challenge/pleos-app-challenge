@@ -7,7 +7,7 @@ import org.junit.Test
 
 class ConquestCatalogTest {
     @Test fun namyangCatalogHasThreeRoadsAndIndependentReverseDirections() {
-        val catalog = File("src/main/assets/conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
+        val catalog = File("src/main/assets/conquest/namyang-legacy.segments").reader().use(ConquestCatalogReader::read)
         assertEquals(6, catalog.roads.size)
         assertEquals(3, catalog.roads.groupBy { setOf(it.fromNode, it.toNode) }.size)
         for (road in catalog.roads) {
