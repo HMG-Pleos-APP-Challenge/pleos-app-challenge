@@ -1,6 +1,6 @@
 # 점령 원장 격리 프로토타입
 
-`ledger-prototype.sql`은 **격리 메모리 DB에서만 시험하는 내부 구현**이다. 운영 SQL Editor에 붙여 넣거나 migration으로 자동 적용하지 않는다. 앱에서 호출할 수 있는 RPC는 추가하지 않았다.
+이 폴더의 SQL은 **격리 메모리 DB에서만 시험하는 프로토타입**이다. 운영 SQL Editor에 붙여 넣거나 migration으로 자동 적용하지 않는다. 후속 gateway-prototype.sql에는 인증된 팀선택/제출 RPC 후보를 추가했지만 운영 배포·앱 실제 호출은 활성화하지 않았다. 명세는 [gateway-contract.md](gateway-contract.md)를 따른다.
 
 ## 구현된 범위
 
@@ -16,9 +16,9 @@
 
 ## 신뢰 경계와 미구현
 
-`accept_verified`의 사용자 ID·검증 근거 해시·판정기 버전은 **신뢰된 서버 검증기/시험 대역** 입력이다. 해시 문자열의 형식 검사로 실제 주행이 검증되는 것은 아니다. `proof-prototype.sql`의 격리 판정기는 추가했지만 인증 gateway와 앱 연결 전이므로 앱 이벤트를 이 내부 원장에 직접 전달하면 안 된다.
+`accept_verified`의 사용자 ID·검증 근거 해시·판정기 버전은 **신뢰된 서버 검증기/시험 대역** 입력이다. 해시 문자열의 형식 검사로 실제 주행이 검증되는 것은 아니다. `proof-prototype.sql`의 격리 판정기와 인증 gateway 후보는 추가했지만 앱 이벤트를 이 내부 원장에 직접 전달하면 안 된다.
 
-함수들은 SECURITY INVOKER이며 PUBLIC/anon/authenticated의 실행권한과 schema/table 권한을 회수했다. 외부 호출의 auth.uid 확인, 팀 선택 RPC의 서버 선택 시각, 배치 응답/부분 ACK 형식은 후속 gateway에서 구현한다. 시험 함수의 `p_test_admitted_ms`는 경계 테스트 전용이고 앱/API에 노출하면 안 된다. 생략하면 잠금 획득 후 clock_timestamp를 사용한다.
+내부 함수들은 SECURITY INVOKER이며 PUBLIC/anon/authenticated의 실행권한과 schema/table 권한을 회수했다. 후속 gateway가 auth.uid·서버시각을 고정하고 항목별 응답을 반환한다. 내부 시험 함수의 `p_test_admitted_ms`는 경계 테스트 전용이고 앱/API에 노출하면 안 된다. 생략하면 잠금 획득 후 clock_timestamp를 사용한다.
 
 활성 catalog 교체·정산·소유 상태/revision·누적 캐시·서버 큐·앱의 근거 수집은 미구현이다. receipt의 최종 거부 코드 등은 시험 계약이며 공통 wire API 승인으로 간주하지 않는다. 기기 근거 보관·용량·운영 환경/담당은 미결을 유지한다.
 
@@ -30,7 +30,7 @@
 
 같은 `docs/data/conquest-proof-fixtures.json`을 PostgreSQL replay와 Kotlin ServerProofParityTest가 읽는다. 18개 사례에는 양방향/중간 출발/U턴/공백/정확도/중복/역순/겹친 도로/교차로 진출/굽은 도로와 실제 전역1,453방향 카탈로그의 한 경로가 있다. 실제 카탈로그 유래 좌표의 출처·라이선스는 기존 docs/data/CONQUEST-DATA-NOTICE.md를 따른다.
 
-내부 submit_proof는 방향/eventId/완료시각을 판정 결과와 대조한 뒤 원장으로 넘긴다. 잘못된 근거의 최종 거부도 receipt로 남겨 동일 ID·다른 근거를 충돌 처리한다. 형식 오류/범위 초과는 SQL 요청 실패다. 배열 상한2048은 격리 시험용 방어 한도이며 승인된 기기 큐/최종 API 용량 정책이 아니다. JSON 수치 정규화·프로토콜/배치 규격과 실제 인증 gateway는 후속이다.
+내부 submit_proof는 방향/eventId/완료시각을 판정 결과와 대조한 뒤 원장으로 넘긴다. 잘못된 근거의 최종 거부도 receipt로 남겨 동일 ID·다른 근거를 충돌 처리한다. 형식 오류/범위 초과는 SQL 요청 실패다. 배열 상한2048은 격리 시험용 방어 한도이며 승인된 기기 큐/최종 API 용량 정책이 아니다. 후속 gateway 후보는 원문 JSON 문자열을 불변으로 전송하고 UTF-8 해시를 대조하므로 PostgreSQL JSON 수치 표현을 앱에서 재현하지 않는다. 실제 인증 환경·기기 업로드·배포는 후속이다.
 
 ## 실행
 
@@ -41,6 +41,7 @@ cd supabase
 npm ci --ignore-scripts --no-audit --no-fund
 node tests/conquest-ledger.mjs
 node tests/conquest-proof.mjs
+node tests/conquest-gateway.mjs
 node tests/exploration.mjs
 ```
 

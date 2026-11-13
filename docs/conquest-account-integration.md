@@ -27,3 +27,7 @@ ConquestAccountAssemblyTest는 실제 ExistingAccountBoundary와 모의 세션/H
 기본 검증 명령은 개인 tools/build-local.ps1의 testDebugUnitTest/lintDebug/assembleDebug다. 실제 계정 로그인·운영 서버 전송·부분 ACK·두 계정/두 기기·실차 검증은 이 단위 검증과 다르다. Supabase URL/Publishable key 설정이 없으면 연결 없음으로 처리하며 기존 로컬 게임은 유지한다. 키 전문을 문서에 기록하지 않는다.
 
 2026-11-13 최종 실행: 전체201개 단위 테스트 실패/오류0(인증9개+binding10개+연결10개 포함), lintDebug/assembleDebug 성공. Lint Warning5/Information1. 에뮬레이터에서 APK 업데이트 후 홈·프로필의 점령0회/0개 및 설정의 서버 미설정 안내를 UI hierarchy로 확인했다. 최근 AndroidRuntime 오류 출력 없음. 위치 권한 안내가 남아 주행 수집은 이번 검증에 포함하지 않았다. 실제 계정 성공/부재/변경 분기는 모의 인증 단위 테스트로 검증했으며 기기에서 실서버 인증을 실행하지 않았다.
+
+## 후속 격리 API 계약 연결
+
+2026-11-13 ConquestServerAccess의 팀 선택/기여 제출 동작과 조립부의 고정 RPC 매핑, 불변 제출 문자열/해시 및 엄격한 응답 parser를 추가했다. 위의 'RPC 포트 미노출'은 이전 단계 기록이다. 명세는 supabase/conquest/gateway-contract.md다. 전체210개 단위/Lint/APK, 격리 gateway14개·원장17개·근거24개·탐험 서버회귀가 통과했다. 아직 화면/추적 서비스에서 submit/selectTeam을 호출하지 않으며 실제 큐/ACK·서버 캐시는 없다. 설정의 계정 조회와 로컬 게임만 기존처럼 실행한다.

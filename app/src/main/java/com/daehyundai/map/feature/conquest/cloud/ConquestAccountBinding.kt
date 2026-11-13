@@ -6,7 +6,9 @@ import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 /** Server-eligible input only. MOCK never has an account binding. */
-internal enum class ConquestServerPartition { PLEOS, PLEOS_EMULATOR }
+internal enum class ConquestServerPartition(val wireName: String) {
+    PLEOS("pleos"), PLEOS_EMULATOR("pleos-emulator")
+}
 
 /** Local isolation metadata, never authentication evidence or a replacement for auth.uid(). */
 internal data class ConquestAccountBinding(
