@@ -135,13 +135,26 @@ class ExplorationRequirementsProbe:Instrumentation() {
                     else -> error("Unexpected simulated request")
                 }
             }
+            check(cloud.existingAccount()==com.daehyundai.map.feature.exploration.cloud.AccountAuthResult.NoSession)
+            check(calls.isEmpty())
             check(cloud.account().getString("id")=="guest")
             cloud.linkEmail("fixture@example.invalid")
             check(linked)
             check(runCatching { cloud.setPassword("fixture-password") }.isFailure)
             verified=true
             cloud.setPassword("fixture-password")
+            val oldBinding=(cloud.existingAccount() as com.daehyundai.map.feature.exploration.cloud.AccountAuthResult.Success).binding
             cloud.restore("fixture@example.invalid","fixture-password","empty-user")
+            val newBinding=(cloud.existingAccount() as com.daehyundai.map.feature.exploration.cloud.AccountAuthResult.Success).binding
+            check(newBinding.generation>oldBinding.generation)
+            check(cloud.withCurrentAccount(oldBinding){error("old account response applied")}==
+                com.daehyundai.map.feature.exploration.cloud.AccountAuthResult.AccountChanged)
+            cloud.restore("fixture@example.invalid","fixture-password","empty-user")
+            val sameAccount=(cloud.existingAccount() as com.daehyundai.map.feature.exploration.cloud.AccountAuthResult.Success).binding
+            check(sameAccount.authUserId==newBinding.authUserId && sameAccount.generation>newBinding.generation)
+            check(cloud.withCurrentAccount(newBinding){error("prior login response applied")}==
+                com.daehyundai.map.feature.exploration.cloud.AccountAuthResult.AccountChanged)
+            checks.add("AUTH PASS: no signup on lookup; replacement generation persists; stale and same-account responses blocked")
             check(cloud.account().getString("id")=="restored")
             val reopened=SupabaseCloud(accountContext,"probe-"+folder.name) { path,_,token,_ ->
                 check(path=="/auth/v1/user" && token=="restored")
