@@ -21,7 +21,39 @@ data class ConquestViewState(val catalog: ConquestCatalog, val summary: Conquest
 class ConquestSession private constructor(private val userId: String, private val catalog: ConquestCatalog,
     private val feature: LocalConquestFeature, private val pipeline: ConquestLocationPipeline,
     private val teams: List<String>, val demoEnabled: Boolean, val sourceType:LocationSourceType,
-    private val accountLink: ConquestAccountLink?) {
+    private val accountLink: ConquestAccountLink?, private val context: Context,
+    private val serverPartition: ConquestServerPartition?) {
+    internal var serverTracking by mutableStateOf<ConquestServerTracking?>(null)
+        private set
+    private val serverSetup = Mutex()
+
+    /** Assembly supplies a confirmed server reply; local team selection never enables server tracking.
+     * Must be called outside location/record locks. Actual uploads remain disabled in this stage.
+     */
+    internal suspend fun prepareServerTracking(access: ConquestServerAccess, expected: ConquestAuthSession,
+        reply: ConquestAccountResult.Success<String>, requestedTeam: String): ConquestAccountResult<Unit> = serverSetup.withLock {
+        val partition = serverPartition
+            ?: return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
+        serverTracking?.stopAndJoin()
+        serverTracking = null
+        var candidate: ConquestServerTracking? = null
+        val prepared = try {
+            withContext(Dispatchers.IO) {
+                ConquestServerTracking.prepare(context, userId, catalog, partition, teams, expected,
+                    reply, requestedTeam, access, uploadsEnabled=false).also {
+                    if (it is ConquestAccountResult.Success) candidate = it.value
+                }
+            }
+        } catch (failure: Exception) { candidate?.stop(); throw failure }
+        when (prepared) {
+            is ConquestAccountResult.Unavailable -> prepared
+            is ConquestAccountResult.Success -> {
+                serverTracking = prepared.value
+                ConquestAccountResult.Success(prepared.session, Unit)
+            }
+        }
+    }
+
     internal var serverAccount by mutableStateOf<ConquestAccountResult<Unit>?>(null)
         private set
 
@@ -29,6 +61,7 @@ class ConquestSession private constructor(private val userId: String, private va
         val link = accountLink ?: return // MOCK must not inspect or create a server account.
         serverAccount = null
         val inspected = withContext(Dispatchers.IO) { link.inspect(access) }
+        serverTracking?.inspectAccount(inspected)
         serverAccount = inspected
     }
     private var savedState by mutableStateOf<ConquestViewState?>(null)
@@ -83,13 +116,15 @@ class ConquestSession private constructor(private val userId: String, private va
         }
     }
 
-    private suspend fun update(action: () -> Unit) = change {
-        savedState = withContext(Dispatchers.IO) {
-            ConquestAccountRestore.withRecordAccess {
-                action()
-                ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
+    private suspend fun update(afterRecord: () -> Unit = {}, action: () -> Unit) = change {
+        try {
+            savedState = withContext(Dispatchers.IO) {
+                ConquestAccountRestore.withRecordAccess {
+                    action()
+                    ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
+                }
             }
-        }
+        } finally { afterRecord() } // Memory handoff only; no auth or disk inside the sample caller.
     }
 
     suspend fun replayDemo(route: DemoRoute, onSample: suspend (LocationSample) -> Unit = {}): Boolean {
@@ -144,12 +179,12 @@ class ConquestSession private constructor(private val userId: String, private va
         demoTimeUtcMs = null
     }
 
-    fun resetInput() { pipeline.resetObservations(userId) }
+    fun resetInput() { pipeline.resetObservations(userId); serverTracking?.resetInput() }
     suspend fun refresh() = update { pipeline.retryPending() }
     suspend fun selectTeam(teamId: String) = update {
         check(pipeline.selectTeam(userId, teamId)) { "Team cannot change" }
     }
-    suspend fun onSample(sample: LocationSample) = update { pipeline.onSample(sample) }
+    suspend fun onSample(sample: LocationSample) = update(afterRecord={ serverTracking?.onSample(sample) }) { pipeline.onSample(sample) }
 
     companion object {
         private val sessions=mutableMapOf<String,ConquestSession>()
@@ -177,7 +212,10 @@ class ConquestSession private constructor(private val userId: String, private va
                 source==LocationSourceType.MOCK && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,source,
                 if(source==LocationSourceType.PLEOS) ConquestAccountLink(File(context.filesDir,"conquest/server-accounts"),
                     userId,if(prefix=="pleos") ConquestServerPartition.PLEOS else ConquestServerPartition.PLEOS_EMULATOR,
-                    catalog.version) else null)
+                    catalog.version) else null,context.applicationContext,
+                if(source==LocationSourceType.PLEOS) {
+                    if(prefix=="pleos") ConquestServerPartition.PLEOS else ConquestServerPartition.PLEOS_EMULATOR
+                } else null)
                 .also { sessions[file.canonicalPath]=it }
         } }
     }

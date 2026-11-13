@@ -41,7 +41,15 @@ FUTURE는 그대로 pending이다. CONFLICT는 원문을 보존한 채 blocked�
 
 ## 활성화 전 남은 연결
 
-현재 화면/추적 서비스는 이 새 수집기·큐·submit을 호출하지 않는다. 기존 게임은 로컬로 실행한다. 서버 환경·소속과 계정 문맥이 확인된 후 ConquestSession에 coordinator를 소유시키고 같은 위치 입력의 완료 결과를 잠금 밖에서 전달하는 연결이 필요하다. 네트워크 실패/큐 한도/근거 누락/blocked 상태의 UI, 백그라운드 재시도 수명, 계정 변경 시 수집기 교체도 연결해야 한다.
+기존 게임은 로컬로 실행한다. ConquestSession은 이제 서버 계정·팀 응답이 검증된 경우에만 prepareServerTracking으로 별도 coordinator를 준비할 수 있다. 해당 준비 함수를 호출하는 앱 조립부의 팀 선택/복구 흐름은 아직 활성화하지 않았다. 단순 계정 조회나 로컬 팀 선택으로 근거 수집·서버 업로드를 시작하지 않는다.
+
+준비된 세션의 onSample은 기존 로컬 기록 처리 후, 기록 잠금 밖에서 같은 입력을 수집기에 전달한다. 외부 서비스의 sampleAccess는 여전히 잡혀 있을 수 있으므로 여기서는 메모리 작업만 한다. 완료 근거는 최대16개 작업의 Channel로 IO worker에 넘긴다. worker가 원래 계정·세대를 다시 확인하고 영속 큐에 넣으며 인증/HTTP를 위치 호출자에게서 기다리지 않는다. 입력 초기화는 두 판정기를 함께 초기화한다. MOCK은 서버 coordinator를 준비할 수 없다.
+
+메모리 handoff는 영속 저장이 아니다. 가득 참·불완전 근거·디스크 실패·계정 불일치는 이번 실행의 '저장하지 못한 근거'로 표시하며 서버 대기 건수에 포함하지 않는다. 프로세스 종료 시 이 짧은 handoff 구간까지 무손실이라고 보장하지 않는다. stop은 새 관측을 멈추고 이미 전달한 작업은 원래 인증 경계로 끝까지 처리한 뒤 DB를 닫는다. 계정·세대 불일치나 세션 부재는 수집을 중지하고 기존 디스크 큐를 유지한다. 계정 재확인도 이전 세대 coordinator를 중지한다. 새 coordinator 준비는 이전 worker 종료 후 수행한다.
+
+재시도는 IO worker에서 처리한다. 업로드를 허용한 격리 시험에서는 신규 저장 후/15초 간격/명시적 요청으로 시도하며 재시도 요청은 중복 적재하지 않는다. 앱의 prepareServerTracking은 uploadsEnabled=false로 고정한다. 실제 앱에서는 HTTP를 보내지 않고 기기 보관 상태만 갱신한다. 지도 화면은 서버 비활성/기기 보관/미전송/충돌/미저장 상태를 표시하고 기존 로컬 요약을 서버 인정 결과로 바꾸지 않는다.
+
+남은 활성화 작업은 검증된 서버 환경에서 조립부의 팀 선택·기존 소속 복구 결과를 준비 함수에 전달하고, 배포 확인 후 업로드 정책을 켜는 것이다. 운영체제에 의한 프로세스 재시작·앱 종료 후 자동 전송은 이 process-local worker가 제공하지 않는다. 별도의 영속 background 작업 도입은 아직 하지 않았다.
 
 운영 API 배포·실제 Auth/PostgREST·두 계정/두 기기·SDK 파일시스템·장기 성능·서버 정산/지도 스냅샷은 이번 구성요소 검증과 구분한다. 기존 계정 복원의 sampleAccess 네트워크 대기는 이 변경에서 해결하지 않았다.
 
@@ -58,3 +66,7 @@ ConquestOutboxTest는 재시작·용량·부분ACK·동시enqueue·응답 유실
 ConquestServerCaptureTest는 공통18개 입력을 수집한 뒤 최소 근거로 재생하고, 실제 Kotlin 제출문자열/해시7개를 app/build/conquest-proof/captured.json에 출력한다. conquest-captured.mjs가 이 문자열을 재직렬화하지 않고 격리 인증 SQL gateway에 넣어 ACCEPTED 및 SHA-256 일치를 확인한다. 이 산출물은 무시되는 build 폴더의 합성 시험 자료이며 사용자 이동 이력이 아니다.
 
 2026-11-14 실제 검증: 전체 단위 테스트232개 실패/오류0, lintDebug·assembleDebug 성공(Warning5/Information1), 격리 SQL의 Kotlin 캡처 패킷7개 모두 통과. 신규 시험은 큐18개와 수집4개다. 실제 Auth/PostgREST 및 기기 업로드 검증은 포함하지 않는다.
+
+후속 P4-2의 ConquestServerTrackingTest는 계정/팀 검증 전 저장소 미생성, 실제 캡처 저장/재시작, 한도·근거 누락·계정 전환·부분 처리 상태, 인증 지연 중 비차단 입력/메모리 한도/종료 시 전달 작업 보관, 실패 후 명시적 재시도를 검증한다. 실제 전체 카탈로그를 읽은 ConquestSession.onSample과 MOCK 차단도 포함한다. 이 JVM 시험의 AssetManager에는 두 기존 도로 asset만 넣은 임시 APK형 ZIP을 제공하며 앱 assets 자체를 바꾸지 않는다. 실제 SDK 위치 구독·실차·UI 조작 시험은 포함하지 않는다.
+
+P4-2 최종 실행: 신규 연결 시험11개 포함 전체243개 실패/오류0, lintDebug·assembleDebug 성공(기존 Warning5/Information1). 첫 시험의 독립 주행 사이 순간 이동은 입력 초기화를 추가해 바로잡았고, 느슨한 asset 디렉터리를 열 수 없던 JVM 시험은 위 APK형 ZIP으로 수정했다. 판정기·실제 assets를 시험에 맞춰 바꾸지 않았다.

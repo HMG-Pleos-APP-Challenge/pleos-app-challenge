@@ -48,6 +48,17 @@ import kotlin.math.*
     val current = state?.summary ?: summary
     session?.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
     if (session?.demoLabel == null) session?.visitStatus?.let { Text(it) }
+    if (session?.sourceType == com.daehyundai.map.core.model.LocationSourceType.PLEOS && session.demoLabel == null) {
+        val tracking = session.serverTracking
+        if (tracking == null) Text(com.daehyundai.map.feature.conquest.cloud.ConquestTransferState().message)
+        else {
+            val transfer by tracking.state.collectAsState()
+            Text(transfer.message)
+            if (transfer.collecting && transfer.issue != null) {
+                OutlinedButton(onClick={ tracking.requestRetry() }) { Text("점령 저장·전송 상태 다시 확인") }
+            }
+        }
+    }
     Text("남양읍 도로 점령", style = MaterialTheme.typography.headlineSmall)
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(session?.demoLabel) {

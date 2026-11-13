@@ -30,4 +30,6 @@ ConquestAccountAssemblyTest는 실제 ExistingAccountBoundary와 모의 세션/H
 
 ## 후속 격리 API 계약 연결
 
+2026-11-14 후속: 최소 근거/SQLite 큐/부분 ACK에 이어 ConquestSession의 같은 위치 입력·입력 초기화 및 상태 UI를 선택적 coordinator에 연결했다. 자세한 현재 상태는 [conquest-outbox.md](conquest-outbox.md)를 따른다. 아래의 '실제 큐 없음'은 이전 단계 기록이다. 검증된 서버 팀 응답을 앱 조립부가 전달하는 활성화 흐름은 아직 없고, 앱의 업로드는 계속 비활성이다. 로컬 팀 선택·기존 계정 조회만으로 수집기를 만들지 않는다. 기존 탐험/인증/추적 서비스 내부 변경은 없다.
+
 2026-11-13 ConquestServerAccess의 팀 선택/기여 제출 동작과 조립부의 고정 RPC 매핑, 불변 제출 문자열/해시 및 엄격한 응답 parser를 추가했다. 위의 'RPC 포트 미노출'은 이전 단계 기록이다. 명세는 supabase/conquest/gateway-contract.md다. 전체210개 단위/Lint/APK, 격리 gateway14개·원장17개·근거24개·탐험 서버회귀가 통과했다. 아직 화면/추적 서비스에서 submit/selectTeam을 호출하지 않으며 실제 큐/ACK·서버 캐시는 없다. 설정의 계정 조회와 로컬 게임만 기존처럼 실행한다.
