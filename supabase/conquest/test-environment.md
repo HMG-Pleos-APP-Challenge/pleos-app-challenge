@@ -1,5 +1,7 @@
 # 별도 Supabase 시험 환경
 
+최신 release 리허설: 별도 시험 프로젝트에만 pg_cron1.6.4를 설치했고, 새 비공개 release/restore 스키마에서 migration·실제 Cron·점령 논리 복구를 검증했다. 시험 job은 정리해 실행 이력만 남겼다. 기존 canonical 점령 기록/시작/제어는 유지했다. 운영 프로젝트에는 설치/적용하지 않았다. 상세와 managed Cron 경고/실제 앱 접근 차단은 release-guide.md를 참조한다.
+
 ## 최신 제출 제어 추가
 
 2026-11-14 이후 새 준비 bundle은 intake-prototype을 포함한14단계이며, 두 출처 모두 기본 중지다. 아래13단계 설치/HTTP10개 기록은 중지 경계 추가 전의 실제 이력이다. 기존 hosted 시험 프로젝트에는 기존 gateway 본문 해시와 환경 marker를 확인한 뒤 추가 SQL만 적용했다. 기존 catalog/팀/운영 시작·기여·정산은 다시 초기화하지 않았다.

@@ -1,5 +1,7 @@
 # 점령 제출 중지·재개
 
+정식 migration 준비와 별도 release 리허설은 [release-guide.md](release-guide.md)를 따른다. release는 검증 gateway를 처음부터 private submit_checked에 생성하고 시험 시간 인자를 없애며, 이 문서의 prototype 설치/이력과 구분한다. 운영에는 아직 적용하지 않았다.
+
 점령 전용 격리 프로토타입이다. 공동 계약 승인/정식 migration/운영 배포가 아니다. `intake-prototype.sql`은 gateway와 settlement 뒤에 적용한다. 새 시험 bundle은14단계이며 두 출처 모두 **기본 중지**다. 전체 시험 bundle을 운영 DB에 적용하지 않는다.
 
 ## 경계와 호환성
