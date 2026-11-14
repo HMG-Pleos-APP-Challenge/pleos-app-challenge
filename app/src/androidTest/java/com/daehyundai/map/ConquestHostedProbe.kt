@@ -27,7 +27,7 @@ class ConquestHostedProbe : Instrumentation() {
                 "Only the isolated test project's Debug APK is allowed"
             }
             val phase=requireNotNull(arguments.getString("phase"))
-            check(phase in setOf("prepare","queue","lost-reply","sync","inspect"))
+            check(phase in setOf("prepare","queue","lost-reply","sync","inspect","offline","restore-blocked"))
             val catalog=targetContext.assets.open("conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
             val teams=listOf("team-red","team-blue")
             val partition=ConquestServerPartition.PLEOS_EMULATOR
@@ -50,8 +50,12 @@ class ConquestHostedProbe : Instrumentation() {
                     expected,partition,catalog.version,team)
                 check(response.teamId==team)
             }
-            val membership=ConquestMembershipResponse.parse(value(access.membership(expected,partition,catalog.version)),
-                expected,partition,catalog.version)
+            val membershipKey="membership-${expected.authUserId}"
+            val membershipRaw=if(phase=="offline") requireNotNull(preferences.getString(membershipKey,null))
+                else value(access.membership(expected,partition,catalog.version)).also {
+                    check(preferences.edit().putString(membershipKey,it).commit())
+                }
+            val membership=ConquestMembershipResponse.parse(membershipRaw,expected,partition,catalog.version)
             val team=requireNotNull(membership.team)
             val outbox=value(ConquestOutbox.openCurrent(targetContext,access,expected,installation,partition,catalog.version))
             val binding=outbox.binding
@@ -62,6 +66,28 @@ class ConquestHostedProbe : Instrumentation() {
             outbox.use {
                 val sync=ConquestOutboxSync(outbox,access)
                 when(phase) {
+                    "offline" -> {
+                        val before=outbox.batch().map { it.id to it.request.requestJson }
+                        check(before.isNotEmpty() && value(snapshots.cached())!=null)
+                        // No transport override: host must disconnect this test AVD before invoking.
+                        val failed=sync.sync(expected)
+                        check(failed is ConquestAccountResult.Unavailable && failed.issue in setOf(
+                            ConquestAccountIssue.REQUEST,ConquestAccountIssue.REFRESH_SESSION))
+                        check(outbox.batch().map { it.id to it.request.requestJson }==before)
+                        note="real transport failed; exact pending rows and previous snapshot preserved"
+                    }
+                    "restore-blocked" -> {
+                        val before=outbox.batch().map { it.id to it.request.requestJson }
+                        var httpCalls=0
+                        val auth=SupabaseCloud(targetContext,requestOverride={ _,_,_,_ ->
+                            httpCalls++;error("Restore must stop before HTTP")
+                        })
+                        val blocked=runCatching { auth.restore("probe@example.invalid","unused-probe-password",installation) }.exceptionOrNull()
+                        check(blocked is IllegalStateException && blocked.message?.contains("점령 기록")==true)
+                        check(httpCalls==0 && access.existingAccount()==current)
+                        check(outbox.batch().map { it.id to it.request.requestJson }==before)
+                        note="actual restore entry blocked before HTTP; account generation and pending rows unchanged"
+                    }
                     "queue" -> {
                         check(outbox.pendingCount()==0) { "Existing pending work must be preserved" }
                         val before=value(snapshots.refresh())
@@ -112,10 +138,13 @@ class ConquestHostedProbe : Instrumentation() {
                     "sync" -> {
                         val event=requireNotNull(preferences.getString("event",null))
                         check(value(sync.sync(expected)).pending==0)
-                        check(outbox.outcome(event) in setOf(ConquestSubmitStatus.ACCEPTED,ConquestSubmitStatus.DUPLICATE_HALF_DAY))
+                        val outcome=outbox.outcome(event)
+                        check(outcome in setOf(ConquestSubmitStatus.ACCEPTED,ConquestSubmitStatus.DUPLICATE_HALF_DAY))
                         check(value(sync.sync(expected)).returned==0)
-                        check(value(snapshots.refresh()).contributions>=1)
-                        note="reopened SQLite; real HTTPS retry ACK and result atomic; empty retry no submission"
+                        val baseline=preferences.getLong("baseline",-1)
+                        check(baseline>=0 && value(snapshots.refresh()).contributions.toLong()==
+                            baseline+if(outcome==ConquestSubmitStatus.ACCEPTED) 1L else 0L)
+                        note="reopened SQLite; real HTTPS atomic ACK; $outcome and exact contribution delta verified"
                     }
                     "prepare", "inspect" -> note="existing encrypted session and membership read"
                 }
@@ -123,7 +152,7 @@ class ConquestHostedProbe : Instrumentation() {
                 val stale=access.withCurrentAccount(expected.copy(generation=expected.generation+1)) { applied=true }
                 check(stale==ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED) && !applied)
                 check(!ConquestAccountRestore.canRestore(File(targetContext.filesDir,"conquest")))
-                val snapshot=value(snapshots.refresh())
+                val snapshot=if(phase=="offline") requireNotNull(value(snapshots.cached())) else value(snapshots.refresh())
                 val cached=value(snapshots.cached())
                 check(cached?.raw==snapshot.raw && snapshot.roads.size==1453)
                 val result=JSONObject().put("phase",phase).put("authUserId",expected.authUserId).put("generation",expected.generation)
