@@ -1,5 +1,7 @@
 # 점령 원장 격리 프로토타입
 
+2026-11-14 후속: 사용자의 새 시험 환경 지시로 분리된 hosted Supabase에도 검토된 SQL을 적용하고 실제 Auth/PostgREST10개를 확인했다. [test-environment.md](test-environment.md)를 따른다. 아래 'in-memory에서만 시험'은 초기 단계 기록이며 현재도 운영 프로젝트/앱 rollout/Cron 활성화는 아니다.
+
 2026-11-14 후속: [settlement-contract.md](settlement-contract.md)에 정산/스냅샷의 최신 격리 명세와 검증 범위를 기록했다. 아래 초기 단계의 '정산 미구현' 기록은 이 후속으로 보완한다. 앱 실제 연결·운영 DB·Cron은 여전히 비활성이다. 작업 공간 tools/build-local.ps1 다음, 저장소 루트에서 node supabase/tests/conquest-settlement.mjs로 검증한다.
 
 이 폴더의 SQL은 **격리 메모리 DB에서만 시험하는 프로토타입**이다. 운영 SQL Editor에 붙여 넣거나 migration으로 자동 적용하지 않는다. 후속 gateway-prototype.sql에는 인증된 팀선택/제출 RPC 후보를 추가했지만 운영 배포·앱 실제 호출은 활성화하지 않았다. 명세는 [gateway-contract.md](gateway-contract.md)를 따른다.
