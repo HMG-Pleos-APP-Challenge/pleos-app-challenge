@@ -41,7 +41,7 @@ export async function buildTestStages(projectRef) {
   let number=1;
   for(const source of (await readdir(new URL('supabase/sql-editor/',root))).filter(n=>n.endsWith('.sql')).sort())
     stages.push({name:`${String(number++).padStart(2,'0')}-existing-${source}`,sql:guard+await readFile(new URL(`supabase/sql-editor/${source}`,root),'utf8')});
-  for(const source of ['ledger','proof','gateway','settlement'])
+  for(const source of ['ledger','proof','gateway','settlement','intake'])
     stages.push({name:`${String(number++).padStart(2,'0')}-conquest-${source}.sql`,sql:guard+await readFile(new URL(`supabase/conquest/${source}-prototype.sql`,root),'utf8')});
   let seed=guard+`begin;\ninsert into conquest_internal.teams values('team-red'),('team-blue');
     insert into conquest_internal.catalogs values(${quote(catalog)});

@@ -18,6 +18,8 @@ try {
   assert.deepEqual((await db.query('select id from conquest_internal.teams order by id')).rows.map(r=>r.id),['team-blue','team-red']);
   assert.equal((await db.query('select count(*)::int n from conquest_internal.settlement_scopes where revision=0')).rows[0].n,2);
   assert.equal((await db.query('select count(*)::int n from conquest_internal.memberships')).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int n from conquest_internal.intake_control where paused and revision=0')).rows[0].n,2);
+  assert.equal((await db.query('select count(*)::int n from conquest_internal.intake_changes')).rows[0].n,2);
   const user='11111111-1111-4111-8111-111111111111';
   await db.query('insert into auth.users values($1)',[user]);
   await db.query("select set_config('request.jwt.claim.sub',$1,false)",[user]);
@@ -29,5 +31,5 @@ try {
   assert.equal((await db.query('select public.sync_exploration_v1($1,$2::jsonb) result',['pleos-emulator','[]'])).rows.length,1);
   await db.exec('reset role');
   await assert.rejects(()=>db.exec(bundle.stages[0].sql));await db.exec('rollback');
-  console.log('PASS: production/malformed ref blocked; all staged SQL applied; 1453 geometries; app team IDs; neutral scopes; own membership/snapshot and existing exploration API; repeat-install refusal.');
+  console.log('PASS: production/malformed ref blocked; all staged SQL applied; 1453 geometries; app team IDs; neutral scopes; both intakes initially paused; own membership/snapshot and existing exploration API; repeat-install refusal.');
 } finally {await db.close();}

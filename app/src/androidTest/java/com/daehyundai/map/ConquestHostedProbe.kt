@@ -27,7 +27,7 @@ class ConquestHostedProbe : Instrumentation() {
                 "Only the isolated test project's Debug APK is allowed"
             }
             val phase=requireNotNull(arguments.getString("phase"))
-            check(phase in setOf("prepare","queue","lost-reply","sync","inspect","offline","restore-blocked"))
+            check(phase in setOf("prepare","queue","lost-reply","sync","inspect","offline","restore-blocked","paused"))
             val catalog=targetContext.assets.open("conquest/namyang.segments").reader().use(ConquestCatalogReader::read)
             val teams=listOf("team-red","team-blue")
             val partition=ConquestServerPartition.PLEOS_EMULATOR
@@ -66,15 +66,16 @@ class ConquestHostedProbe : Instrumentation() {
             outbox.use {
                 val sync=ConquestOutboxSync(outbox,access)
                 when(phase) {
-                    "offline" -> {
+                    "offline", "paused" -> {
                         val before=outbox.batch().map { it.id to it.request.requestJson }
                         check(before.isNotEmpty() && value(snapshots.cached())!=null)
-                        // No transport override: host must disconnect this test AVD before invoking.
+                        // Real transport: host disconnects AVDs or pauses the isolated server first.
                         val failed=sync.sync(expected)
                         check(failed is ConquestAccountResult.Unavailable && failed.issue in setOf(
                             ConquestAccountIssue.REQUEST,ConquestAccountIssue.REFRESH_SESSION))
                         check(outbox.batch().map { it.id to it.request.requestJson }==before)
-                        note="real transport failed; exact pending rows and previous snapshot preserved"
+                        note=if(phase=="paused") "server submit refused; exact pending rows preserved while reads continue"
+                            else "real transport failed; exact pending rows and previous snapshot preserved"
                     }
                     "restore-blocked" -> {
                         val before=outbox.batch().map { it.id to it.request.requestJson }

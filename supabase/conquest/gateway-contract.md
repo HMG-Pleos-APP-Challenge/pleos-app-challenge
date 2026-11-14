@@ -1,5 +1,7 @@
 # 점령 인증 API 격리 계약 초안
 
+최신 제출 중지 경계는 [intake-contract.md](intake-contract.md)를 따른다. 공개 함수의 성공 계약은 유지하고, 시험 서버에서 기본 중지/HTTP503 전체 배치 보류를 추가했다. 기존 검증 gateway는 private 구현으로 유지한다. 이 추가는 공동 계약 승인이나 운영 적용을 뜻하지 않는다.
+
 2026-11-14 정산/지도 조회 후속은 [settlement-contract.md](settlement-contract.md)를 따른다. conquest_snapshot_v1은 authenticated 전용 읽기 후보이며 정산 함수는 앱에 노출하지 않는다. 실제 배포/앱 호출/Cron 활성화는 하지 않았다.
 
 2026-11-13. `gateway-prototype.sql`을 새 in-memory DB에 적용해 시험하는 명세다. 운영 migration/배포 지시가 아니며 앱의 실제 업로드도 활성화하지 않는다. 기존 탐험 API/DB/공통 모델은 유지한다.
