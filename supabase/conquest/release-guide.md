@@ -1,5 +1,7 @@
 # 점령 서버 v1 migration과 복구 리허설
 
+2026-11-15 후속: 운영 메타데이터 대조·migration 이력 부재 확인, 닫힌 catalog/팀/S bootstrap과 별도 hosted 리허설은 [deployment-guide.md](deployment-guide.md)를 참조한다. 운영에는 아직 쓰지 않았다.
+
 상태: 배포 검토용 정식 migration 파일을 생성하고 검증한다. **운영 적용·공동 계약 승인·앱 활성화 완료 문서가 아니다.** 기존 탐험/예약 테이블과 main을 유지한다.
 
 ## migration 파일과 생성 원칙
