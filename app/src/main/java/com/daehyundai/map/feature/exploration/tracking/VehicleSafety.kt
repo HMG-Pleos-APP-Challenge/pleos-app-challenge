@@ -56,3 +56,10 @@ object VehicleSafety {
         }
     }
 }
+
+
+/** Allow submission UI replay on the exact Pleos emulator used for development. */
+fun isVerifiedPleosEmulator(hardware:String,fingerprint:String):Boolean =
+    hardware in setOf("ranchu","goldfish") &&
+        fingerprint.startsWith("Pleos/crp_avd/") &&
+        fingerprint.contains("/release_connect_v2.1.0:")

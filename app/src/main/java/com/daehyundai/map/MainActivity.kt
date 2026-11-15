@@ -62,7 +62,8 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
         val release=com.daehyundai.map.feature.exploration.tracking.VehicleSafety.acquire(context)
         onDispose { release() }
     }
-    val developerEnabled=context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE!=0
+    val developerEnabled=context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE!=0 ||
+        com.daehyundai.map.feature.exploration.tracking.isVerifiedPleosEmulator(Build.HARDWARE,Build.FINGERPRINT)
     val (mockSession,mockError)=rememberExplorationSession(userId)
     val sdkState=rememberPleosExploration()
     val policy=remember(context) { pleosAccuracyPolicy(context) }

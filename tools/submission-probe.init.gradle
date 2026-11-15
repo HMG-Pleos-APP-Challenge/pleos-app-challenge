@@ -1,0 +1,7 @@
+allprojects {
+    plugins.withId("com.android.application") {
+        androidComponents.finalizeDsl { dsl ->
+            dsl.defaultConfig.testInstrumentationRunner = "com.daehyundai.map.SubmissionReleaseProbe"
+        }
+    }
+}
