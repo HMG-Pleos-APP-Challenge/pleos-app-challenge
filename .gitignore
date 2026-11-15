@@ -39,3 +39,7 @@ tools/__pycache__/
 
 # Local backend test dependencies
 supabase/node_modules/
+
+# Submission APK distributed with source
+!/apk/
+!/apk/*.apk

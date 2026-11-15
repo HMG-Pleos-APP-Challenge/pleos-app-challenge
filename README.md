@@ -1,83 +1,109 @@
 # 대현대여지도
 
-현대차 Pleos 앱 공모전의 2인 공동 개발용 Android 초기 프로젝트입니다.
-현재 통합 앱은 남양읍 **500m 탐험 셀 243개**와 **방향별 도로 점령(3개 도로·6방향)**을 제공합니다. 탐험·프로필은 Supabase와 로컬 캐시를 사용하고, 점령은 기기 내 저장으로 동작합니다. 한 Pleos 위치 구독을 두 기능에 전달하며 모의 입력·SDK 입력·시연 결과는 분리합니다. 실차 주행 판정과 점령 서버 연동은 후속 작업입니다. 통합 구조·검증·협의 사항은 [통합 검토 문서](docs/integration-review.md)를 먼저 확인하세요.
+팀 **구랩**
 
-1차 규칙·출처·DB/후속 단계 제안·검증 기록은 [지역 발견 검토 문서](docs/exploration-stage1-review.md)를 확인하세요. 1차는 사용자 승인 후 `c0383b1`로 로컬 커밋했습니다. [2차 도로 셀 검토 문서](docs/exploration-stage2-review.md)를 확인하세요. 2차는 승인 후 `03fb999`로 로컬 커밋했습니다. [3차 랜드마크 검토 문서](docs/exploration-stage3-review.md)를 확인하세요. 3차도 사용자 검토·로컬 커밋 승인을 받았습니다. 초기 세 단계는 모의 입력으로 검증했습니다. 이후 SDK 통합 검증에서는 별도 저장소에서 지역·도로 셀·실제 2분 체류 해금과 재로딩을 확인했습니다. 이후 SDK 수신 연동 변경은 [SDK 검토 문서](docs/pleos-location-sdk-review.md)를 참고하세요. SDK 콜백 수신과 실차 GPS 검증은 구분합니다.
+운전한 지역을 나만의 탐험 지도로 기록하고, 도로를 방향별로 완주하며 팀과 함께 점령하는 Pleos Connect 차량용 앱입니다.
 
-## 공통 문서
+## APK
 
-- [공통 계약 v0.1](https://app.notion.com/p/40f99682f1f081528152dfba45f9c99e)
-- [협업 운영 규칙](https://app.notion.com/p/40299682f1f081f08eabc6ced98314be)
-- [개발 환경](https://app.notion.com/p/40299682f1f081ff99d8d7827581e66b)
-- [Task & Issue DB](https://app.notion.com/p/556be41b276a4af780e9101bfce86e85)
+- **서명된 release APK** — [구랩_대현대여지도_release.apk](apk/구랩_대현대여지도_release.apk)
+- 패키지 com.daehyundai.map · 버전 0.1.0 · 최소 Android 9(API 28) · 대상 API 34
+- 저장소 main의 소스에서 빌드했습니다. 파일 무결성과 실제 검증 내용은 [APK 검증 기록](apk/README.md)을 확인해 주세요.
 
-계약과 namespace는 초기 PR에서 두 개발자가 검토할 제안이며, 공동 승인이 끝났다는 뜻은 아닙니다.
+## 실행 방법
 
-## 실행
+1. Pleos Connect 2.1.0 에뮬레이터를 실행합니다.
+2. 위 APK를 내려받아 에뮬레이터 창에 끌어다 놓거나 아래 명령으로 설치합니다.
+3. 앱 목록에서 **대현대여지도**를 실행합니다. 첫 화면에서 **새 탐험 시작** 또는 **기존 계정 복원**을 선택합니다.
+4. 위치·알림 권한 요청을 확인합니다. 탐험 기록은 화면과 독립적인 서비스에서 처리합니다.
+5. 홈의 **탐험하기**, **점령 보기**, **내 프로필**에서 각 기능을 확인합니다.
 
-1. Android Studio에서 이 저장소 폴더를 엽니다.
-2. Android SDK Platform 34, Build Tools 34.0.0을 설치합니다.
-3. **Gradle JDK는 17을 선택합니다.** 이 조합에 Studio 내장 JDK 25를 사용하지 않습니다.
-4. SDK 경로는 Android Studio가 생성하는 `local.properties`에 둡니다. 이 파일은 커밋하지 않습니다.
-5. Pleos Connect 2.1.0 가상 기기를 RAM 4GB, Cold boot로 실행하고 `app`을 Run 합니다.
+~~~shell
+adb install "구랩_대현대여지도_release.apk"
+adb shell am start -n com.daehyundai.map/.MainActivity
+~~~
 
-Windows 검증:
+제출 APK는 기존 개발용 APK와 서명이 다릅니다. 서명 불일치가 발생하면 별도의 새 AVD에서 설치해 주세요.
 
-```powershell
-$env:JAVA_HOME = '설치한 JDK 17 경로'
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
-```
+### 에뮬레이터 기능 시연
 
-macOS/Linux는 JDK 17을 선택하고 `./gradlew testDebugUnitTest lintDebug assembleDebug`를 실행합니다.
+검증한 Pleos 2.1.0 에뮬레이터에서는 release APK에도 시연 도구를 제공합니다.
 
-홈의 고정 모의 주행 버튼은 기존 3개 가상 도로의 점령 기여 연결을 확인합니다. 이 경로의 가상 지역 ID는 실제 남양읍 발견에 사용하지 않습니다. 개인 탐험 화면에서 ‘지역 진입 재생’, ‘경계 밖 재생’, ‘정확도 불량 재생’으로 1차 판정을 확인할 수 있습니다. 정상 진입 시 남양읍 도감이 한 번 열리며, 반복 재생해도 중복 집계되지 않고 앱 종료·재실행 후에도 발견 기록이 유지됩니다. 데이터 삭제나 앱 제거 시 로컬 기록은 지워집니다.
+1. **내 프로필 → 설정 → 개발자 도구**로 이동합니다.
+2. **모의 재생 기록**을 선택합니다.
+3. **지역 진입 재생**으로 지역 발견을, **도로 이동 재생 · 셀 해금**으로 지나간 4개 구역의 해금을 확인합니다. 반복 재생 시 중복 보상을 지급하지 않습니다.
+4. **짧은 방문 재생**, **이탈 후 복귀 재생**, **2분 모의 체류 재생**으로 명소 체류 조건을 비교합니다. 입력 시각을 재생하므로 2분을 실제로 기다리는 시연은 아닙니다.
+5. 점령 화면의 경로 시연과 정산 시연으로 방향별 완주·기여·소유팀 변화를 확인합니다. 통합 시연은 화면에 표시하며 메모리 기록으로 처리합니다.
 
-개인 탐험 지도는 행정경계·도로 셀을 그린 프로토타입이며 배경지도 타일을 사용하지 않습니다. 기본값은 모의 기록이고, 상단 ‘SDK 위치 시작’으로 위치 권한을 요청한 뒤 별도 SDK 기록을 표시합니다. 검증된 디버그 에뮬레이터에서는 SDK 위치로 지역·셀·체류 도감을 자동 해금합니다. 모의 재생은 mock-*, SDK 에뮬레이터는 pleos-emulator-*, 검증되지 않은 SDK 입력은 pleos-* 저장 공간으로 구분합니다. 지역 최초 발견과 세부 탐험률을 구분합니다. ‘도로 이동 재생 · 셀 해금’은 실제 도로 위 모의 이동으로 4개 셀을 해금합니다. 현재 탐험률 분모는 선택한 공개 도로 기반 대상 셀 1,579개이며, 미수집 도로를 포함한 전체 지역 완주율은 아닙니다. 카탈로그가 없는 구성은 ‘집계 없음’을 표시합니다. OSM 도로 데이터는 ODbL로 제공하며 [도로 데이터 고지](docs/data/ROAD-DATA-NOTICE.md)와 재현 도구를 함께 보존합니다. XP·레벨은 선택한 기록 출처별로 저장하며, 점령 기여는 앱 종료 시 사라지는 기존 Mock입니다. 실주행 사용·주차 판정·실시간 멀티플레이는 지원하지 않습니다.
+차량 상태 API가 없는 검증 에뮬레이터에서도 지도·시연을 볼 수 있도록 처리했습니다. 실제 차량은 차량의 조작 제한을 따릅니다. release의 SDK 정확도 해석은 보수적으로 동작하므로 제출 기능 확인에는 위 모의 시연을 이용해 주세요.
 
-## 공동 빌드 기준
+## 현재 구현 범위
 
-| 항목 | 초기 기준 |
-|---|---|
-| 앱 모듈 | `app` 하나 |
-| namespace / applicationId | `com.daehyundai.map` (공동 확인 대상) |
-| Java / Gradle Wrapper | 17 / 8.7 (공식 SHA-256 검증) |
+- **지도 탐험** — 남양읍 실제 행정경계, 500m 도로 기반 구역 243개, 최초 지역 발견, 부분 해금, 명소 연속 체류 도감, 경험치·레벨
+- **도로 점령** — 남양읍 일반 도로 801개 물리 구간·1,453방향, 방향별 완주, 같은 계정·방향·KST 반일 중복 제한, 팀 선택, 직전 36시간을 기준으로 한 낮 12시 정산, 동점·만료 처리
+- **프로필과 저장** — 누적 진행도, 탐험 기록 보존, 게스트 이메일 연결·계정 복원, 기존 인증 재사용 경계
+- **동기화** — 탐험 서버 확정 기록과 기기의 전송 대기를 구별합니다. 점령 계정 귀속·큐·기여·정산·스냅샷 코드는 포함돼 있으며 제출 앱의 일반 점령 서버 rollout은 비활성 상태입니다.
+
+지도는 번들된 경계·도로 데이터를 직접 그립니다. 탐험률은 수집한 도로 카탈로그의 대상 구역으로 계산합니다.
+
+## 테스트 환경 및 필요한 설정
+
+### APK 실행 환경
+
+| 항목 | 개발·검증 환경 |
+| --- | --- |
+| Pleos Connect 시스템 이미지 | **2.1.0** |
+| Android | **14 / API 34**, x86_64 |
+| 화면 규격 | **2560 × 1440 px**, 가로 화면 |
+| 화면 밀도 | **160 dpi** |
+| 가상 기기 RAM | **4096 MB** |
+| 실행 권한 | 위치, Pleos 위치 서비스, 알림 |
+| 네트워크 | 오프라인 모의 시연 가능. 이메일·탐험 서버 동기화에는 인터넷 필요 |
+
+실차 주행, 실제 이메일을 통한 두 기기 복원, 모든 화면 크기에서의 사용성은 추가 검증 대상입니다.
+
+### 소스 빌드
+
+| 항목 | 버전 |
+| --- | --- |
+| JDK / Gradle Wrapper | 17 / 8.7 |
 | Android Gradle Plugin | 8.5.2 |
 | Kotlin / Compose Compiler | 1.9.25 / 1.5.15 |
-| Compose BOM / Activity | 2024.06.00 / 1.9.0 |
-| min / compile / target SDK | 28 / 34 / 34 |
-| Pleos Emulator | Connect 2.1.0 / API 34 |
+| compile / target SDK | 34 / 34 |
+| Android Build Tools | 34.0.0 |
+| Pleos FusedLocation / TTS | 1.1.3 / 3.3.1 |
 
-현재 설치된 API 34 환경에서 검증할 최소 기준이며 최신 버전이라는 뜻은 아닙니다. 실제 Pleos 라이브러리를 연결할 때 요구 버전을 확인하고 함께 갱신합니다. 스토어 배포 요건 충족을 의미하지 않습니다.
+Android Studio에서 저장소를 열고 JDK 17 및 SDK 34를 선택합니다. SDK 경로는 로컬 local.properties에 설정합니다. 서버 연결이 필요한 개발 빌드는 다음 두 속성도 로컬에서 설정합니다.
 
-근거: [Pleos 환경](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator), [AGP 호환표](https://developer.android.com/build/releases/agp-8-5-0-release-notes), [Compose/Kotlin 호환표](https://developer.android.com/jetpack/androidx/releases/compose-kotlin).
+~~~properties
+sdk.dir=로컬 Android SDK 경로
+supabase.url=사용할 Supabase 프로젝트 URL
+supabase.publishableKey=해당 프로젝트의 공개 클라이언트 키
+~~~
 
-## 역할과 폴더
+서명키·비밀번호·서버 관리자 키는 저장소에 포함하지 않습니다. 공개 클라이언트 키만 앱 빌드 설정으로 사용합니다. 서버 설정 없이도 번들 지도와 모의 시연을 개발할 수 있습니다.
 
-`app/src/main/java/com/daehyundai/map/` 아래에 다음 폴더를 둡니다.
+~~~powershell
+# Windows
+.\gradlew.bat testDebugUnitTest lintDebug lintRelease assembleRelease
+~~~
 
-- `core/model`, `core/contract`: 공동 데이터와 호출 규칙
-- `core/location`, `core/data`: 모의 입력과 초기 연결 확인용 구현
-- `feature/conquest`, `feature/home`: 최 담당
-- `feature/exploration`, `feature/profile`: 유 담당
-- `navigation`: 공동 route `home`, `conquest/map`, `exploration/map`, `profile`
+~~~shell
+# macOS / Linux
+./gradlew testDebugUnitTest lintDebug lintRelease assembleRelease
+~~~
 
-홈·프로필은 요약값으로 데이터를 받으며 다른 기능의 내부 저장소를 조회하지 않습니다. 팀 수·점령 임계값·36시간 시작점·실제 탐험률 단위·레벨 곡선은 초기 코드에서 확정하지 않습니다.
+assembleRelease 기본 결과는 app/build/outputs/apk/release/app-release-unsigned.apk입니다. 다시 배포할 때는 보관 중인 제출 서명키 또는 본인의 서명키로 정렬·서명해야 합니다. 제공 APK는 정렬·서명을 마친 파일입니다.
 
-## 협업
+## 검증과 개발 문서
 
-기능 브랜치에서 Commit → PR → 상대 리뷰 → 빌드/테스트 확인 → main 병합을 지킵니다. 초기 프로젝트도 별도 브랜치와 PR로 검토하며 자동 병합하지 않습니다. 공통 파일 변경은 PR에 영향과 공유 내용을 적습니다. API 키·로그인 정보·서명키는 커밋하지 않습니다.
+- JVM 회귀 테스트, debug/release Lint, release APK 빌드와 서명 검사
+- 별도 Pleos 에뮬레이터의 최종 release APK 설치·화면 이동 결과는 [검증 기록](apk/README.md)에 기록합니다.
+- [탐험 요구사항·개발자 시뮬레이션](docs/exploration-spec/README.md)
+- [인증 호출·전환 세대·잠금 계약](docs/shared-auth-boundary.md)
+- [탐험·점령 통합 검토](docs/integration-exploration-choi-review.md)
+- [점령 서버 적용 계획](supabase/conquest/release-guide.md)
+- [이전 단계별 개발 기록](docs/integration-review.md)
+- [도로 데이터](docs/data/ROAD-DATA-NOTICE.md) · [명소 데이터](docs/data/LANDMARK-DATA-NOTICE.md) · [점령 데이터](docs/data/CONQUEST-DATA-NOTICE.md)
 
-CI는 단위 테스트·Lint·APK 빌드를 수행합니다. Pleos Emulator 구동 검증은 별도이며 실행한 사람만 결과를 기록합니다.
-
-## 랜드마크 체류 시연
-
-개인 탐험에서 ‘짧은 방문 재생’은 도감을 획득하지 않고, ‘2분 모의 체류 재생’은 성모마리아 기념상 도감 1개를 획득합니다. ‘이탈 후 복귀 재생’은 이탈 전후의 시간을 합산하지 않습니다. 시연은 10초 간격의 위치 이벤트 시각을 재생하며 실제 2분 대기나 차량 주차 확인이 아닙니다. 획득 도감은 재시작 후 유지되고 미완료 체류는 이어지지 않습니다. 도로 셀 탐험률과는 별도 집계합니다. 출처·좌표·초기 규칙은 [명소 데이터 고지](docs/data/LANDMARK-DATA-NOTICE.md)에 기록했습니다.
-
-## 화면 밖 기록과 음성 알림
-
-‘탐험 기록 시작’ 후 위치 권한을 허용하면 지속 알림이 있는 서비스가 화면 밖에서도 SDK 탐험을 기록합니다. 새 해금은 10초 단위로 묶어 기기 내 TTS로 알립니다. 모의 기록 보기로 전환해도 기록은 계속되며, ‘기록 중지’ 또는 알림에서 종료합니다. 오디오 포커스/음성 오류가 나도 기록은 보존합니다. 강제 종료·재부팅 후 자동 재시작과 실차 검증은 포함하지 않습니다. [검증·권한·제약](docs/background-tracking-tts-review.md)을 확인하세요.
-
-## 사용자와 프로필 진행도
-
-설치 데이터에 UUID를 저장하고 기존 u-demo-01의 탐험 기록을 이관합니다. 최초 지역 100·도로 셀 10·명소 200 XP, 100 XP마다 레벨이 오르는 개발용 규칙입니다. 기존 획득분도 한 번만 반영하고 재시작·중복 재생으로 추가 지급하지 않습니다. 프로필에는 선택한 기록 출처의 누적 XP·레벨·다음 레벨까지 남은 XP를 표시합니다. 모의/SDK 에뮬레이터/실차 원장은 분리합니다. 앱 데이터 삭제 시 초기화되며 서버 계정 기능은 아닙니다. [저장·이관·복구·검증](docs/profile-progress-review.md)을 참고하세요.
+[공모전 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission)의 앱 소개·실행 방법·테스트 환경·에뮬레이터 버전과 화면 규격·APK 위치 항목에 맞춰 작성했습니다.
