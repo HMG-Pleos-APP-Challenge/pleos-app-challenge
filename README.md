@@ -4,6 +4,18 @@
 
 운전한 지역을 나만의 탐험 지도로 기록하고, 도로를 방향별로 완주하며 팀과 함께 점령하는 Pleos Connect 차량용 앱입니다.
 
+## 목차
+
+- [APK](#apk)
+- [실행 방법](#실행-방법)
+  - [에뮬레이터 기능 시연](#에뮬레이터-기능-시연)
+- [현재 구현 범위](#현재-구현-범위)
+- [테스트 환경 및 필요한 설정](#테스트-환경-및-필요한-설정)
+  - [APK 실행 환경](#apk-실행-환경)
+  - [소스 빌드](#소스-빌드)
+- [검증과 개발 문서](#검증과-개발-문서)
+
+
 ## APK
 
 - **서명된 release APK** — [구랩_대현대여지도_release.apk](apk/구랩_대현대여지도_release.apk)
@@ -35,7 +47,7 @@ adb shell am start -n com.daehyundai.map/.MainActivity
 4. **짧은 방문 재생**, **이탈 후 복귀 재생**, **2분 모의 체류 재생**으로 명소 체류 조건을 비교합니다. 입력 시각을 재생하므로 2분을 실제로 기다리는 시연은 아닙니다.
 5. 점령 화면의 경로 시연과 정산 시연으로 방향별 완주·기여·소유팀 변화를 확인합니다. 통합 시연은 화면에 표시하며 메모리 기록으로 처리합니다.
 
-차량 상태 API가 없는 검증 에뮬레이터에서도 지도·시연을 볼 수 있도록 처리했습니다. 실제 차량은 차량의 조작 제한을 따릅니다. release의 SDK 정확도 해석은 보수적으로 동작하므로 제출 기능 확인에는 위 모의 시연을 이용해 주세요.
+차량 상태 API가 없는 검증 에뮬레이터에서도 지도·시연을 볼 수 있도록 처리했습니다. 실제 차량은 차량의 조작 제한을 따릅니다.
 
 ## 현재 구현 범위
 
@@ -93,7 +105,7 @@ supabase.publishableKey=해당 프로젝트의 공개 클라이언트 키
 ./gradlew testDebugUnitTest lintDebug lintRelease assembleRelease
 ~~~
 
-assembleRelease 기본 결과는 app/build/outputs/apk/release/app-release-unsigned.apk입니다. 다시 배포할 때는 보관 중인 제출 서명키 또는 본인의 서명키로 정렬·서명해야 합니다. 제공 APK는 정렬·서명을 마친 파일입니다.
+assembleRelease 기본 결과는 app/build/outputs/apk/release/app-release-unsigned.apk입니다. 제공 APK는 정렬·서명을 마친 파일입니다.
 
 ## 검증과 개발 문서
 
@@ -105,5 +117,3 @@ assembleRelease 기본 결과는 app/build/outputs/apk/release/app-release-unsig
 - [점령 서버 적용 계획](supabase/conquest/release-guide.md)
 - [이전 단계별 개발 기록](docs/integration-review.md)
 - [도로 데이터](docs/data/ROAD-DATA-NOTICE.md) · [명소 데이터](docs/data/LANDMARK-DATA-NOTICE.md) · [점령 데이터](docs/data/CONQUEST-DATA-NOTICE.md)
-
-[공모전 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission)의 앱 소개·실행 방법·테스트 환경·에뮬레이터 버전과 화면 규격·APK 위치 항목에 맞춰 작성했습니다.
