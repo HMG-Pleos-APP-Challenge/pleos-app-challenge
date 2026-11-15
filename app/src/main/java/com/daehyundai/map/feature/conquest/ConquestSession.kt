@@ -7,22 +7,150 @@ import androidx.compose.ui.platform.LocalContext
 import com.daehyundai.map.core.model.*
 import com.daehyundai.map.feature.conquest.data.*
 import com.daehyundai.map.feature.conquest.domain.*
+import com.daehyundai.map.feature.conquest.cloud.*
 import java.io.File
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class ConquestViewState(val catalog: ConquestCatalog, val summary: ConquestSummary,
     val owners: Map<String, String?>, val teamIds: List<String>,
-    val roadDetails: Map<String, ConquestRoadDetail> = emptyMap())
+    val roadDetails: Map<String, ConquestRoadDetail> = emptyMap(),
+    val serverLabel: String? = null, val serverStartedUtcMs: Long? = null,
+    val serverSettledUtcMs: Long? = null,
+    val serverSettlements: Map<String,RoadSettlementExplanation> = emptyMap())
 
 /** One session at the app composition root. Screens receive snapshots, not direct access to storage. */
 class ConquestSession private constructor(private val userId: String, private val catalog: ConquestCatalog,
     private val feature: LocalConquestFeature, private val pipeline: ConquestLocationPipeline,
-    private val teams: List<String>, val demoEnabled: Boolean, val sourceType:LocationSourceType) {
+    private val teams: List<String>, val demoEnabled: Boolean, val sourceType:LocationSourceType,
+    private val accountLink: ConquestAccountLink?, private val context: Context,
+    private val serverPartition: ConquestServerPartition?) {
+    internal var serverTracking by mutableStateOf<ConquestServerTracking?>(null)
+        private set
+    private val serverSetup = Mutex()
+    private val snapshotScope = CoroutineScope(SupervisorJob()+Dispatchers.IO)
+    private var snapshotObserver: Job? = null
+    private val snapshotDisplay = Any()
+    private var serverView by mutableStateOf<Pair<ConquestServerTracking,ConquestViewState>?>(null)
+    private val serverConnectionSetup = Mutex()
+    internal var serverConnection by mutableStateOf<ConquestMembershipConnection?>(null)
+        private set
+    private var serverPort: ConquestServerAccess? = null
+
+    /** Disabled by rollout gate in app assembly; never infer activation from API-key presence. */
+    internal suspend fun connectServer(access: ConquestServerAccess,
+        enabled: Boolean = ConquestServerRollout.membershipEnabled) = serverConnectionSetup.withLock {
+        serverConnection?.deactivate()
+        serverConnection = null
+        serverPort = null
+        serverSetup.withLock {
+            snapshotObserver?.cancel();snapshotObserver=null
+            synchronized(snapshotDisplay) { serverView=null }
+            serverTracking?.stopAndJoin()
+            synchronized(snapshotDisplay) { serverTracking=null }
+        }
+        val partition = serverPartition
+        if (!enabled || partition == null) return@withLock
+        serverPort = access
+        lateinit var connection: ConquestMembershipConnection
+        connection = ConquestMembershipConnection(access,partition,catalog.version,teams) { expected, team ->
+            replaceServerTracking(isCurrent={ serverConnection === connection && connection.isActive }) {
+                ConquestServerTracking.prepareConfirmed(context,userId,catalog,partition,teams,expected,team,
+                    access,uploadsEnabled=false,readSnapshots=true)
+            }
+        }
+        serverConnection = connection
+        connection.connect()
+    }
+
+    internal suspend fun reconnectServer() { serverPort?.let { connectServer(it,enabled=true) } }
+
+    /** Assembly supplies a confirmed server reply; local team selection never enables server tracking.
+     * Must be called outside location/record locks. Actual uploads remain disabled in this stage.
+     */
+    internal suspend fun prepareServerTracking(access: ConquestServerAccess, expected: ConquestAuthSession,
+        reply: ConquestAccountResult.Success<String>, requestedTeam: String): ConquestAccountResult<Unit> {
+        val partition = serverPartition
+            ?: return ConquestAccountResult.Unavailable(ConquestAccountIssue.NOT_CONFIGURED)
+        return replaceServerTracking {
+            ConquestServerTracking.prepare(context, userId, catalog, partition, teams, expected,
+                reply, requestedTeam, access, uploadsEnabled=false)
+        }
+    }
+
+    private suspend fun replaceServerTracking(isCurrent: () -> Boolean = { true },
+        prepare: () -> ConquestAccountResult<ConquestServerTracking>)
+        : ConquestAccountResult<Unit> = serverSetup.withLock {
+        if (!isCurrent()) return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED)
+        snapshotObserver?.cancel();snapshotObserver=null
+        synchronized(snapshotDisplay) { serverView=null }
+        serverTracking?.stopAndJoin()
+        synchronized(snapshotDisplay) { serverTracking=null }
+        var candidate: ConquestServerTracking? = null
+        val prepared = try {
+            withContext(Dispatchers.IO) {
+                prepare().also {
+                    if (it is ConquestAccountResult.Success) candidate = it.value
+                }
+            }
+        } catch (failure: Exception) { candidate?.stop(); throw failure }
+        if (!isCurrent()) {
+            candidate?.stop()
+            return@withLock ConquestAccountResult.Unavailable(ConquestAccountIssue.ACCOUNT_CHANGED)
+        }
+        when (prepared) {
+            is ConquestAccountResult.Unavailable -> prepared
+            is ConquestAccountResult.Success -> {
+                synchronized(snapshotDisplay) { serverTracking=prepared.value }
+                val tracking=prepared.value
+                snapshotObserver=snapshotScope.launch {
+                    tracking.snapshotState.collect { status ->
+                        val view=status.snapshot?.let { snapshot ->
+                            val explanations=snapshot.settledMs?.let { cutoff -> snapshot.roads.mapValues { (_,r) ->
+                                RoadSettlementExplanation(cutoff,r.scores,r.previous,r.owner,SettlementReason.valueOf(r.reason))
+                            } }.orEmpty()
+                            val label=buildString {
+                                val confirmed=java.time.Instant.ofEpochMilli(snapshot.generatedMs).atZone(java.time.ZoneId.of("Asia/Seoul"))
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+                                append("서버 확인 기록 · $confirmed KST")
+                                if(status.cached) append(" · 저장된 이전 확인본")
+                                if(snapshot.settlementDelayed) append(" · 서버 정산 지연")
+                                if(status.issue!=null) append(" · 최신 확인 실패")
+                            }
+                            ConquestViewState(catalog,ConquestSummary(userId,snapshot.team,snapshot.owned,snapshot.contributions,
+                                snapshot.updatedMs),snapshot.roads.mapValues { it.value.owner },teams,serverLabel=label,
+                                serverStartedUtcMs=snapshot.startedMs,serverSettledUtcMs=snapshot.settledMs,serverSettlements=explanations)
+                        }
+                        synchronized(snapshotDisplay) {
+                            if (serverTracking === tracking) serverView=if (view!=null && tracking.state.value.collecting)
+                                tracking to view else null
+                        }
+                    }
+                }
+                ConquestAccountResult.Success(prepared.session, Unit)
+            }
+        }
+    }
+
+    internal var serverAccount by mutableStateOf<ConquestAccountResult<Unit>?>(null)
+        private set
+
+    internal suspend fun inspectServerAccount(access: ConquestAccountAccess) {
+        val link = accountLink ?: return // MOCK must not inspect or create a server account.
+        serverAccount = null
+        val inspected = withContext(Dispatchers.IO) { link.inspect(access) }
+        serverConnection?.inspectAccount(inspected)
+        serverTracking?.inspectAccount(inspected)
+        serverAccount = inspected
+    }
     private var savedState by mutableStateOf<ConquestViewState?>(null)
     private var demoState by mutableStateOf<ConquestViewState?>(null)
-    val state get() = demoState ?: savedState
+    val localState get() = demoState ?: savedState
+    val state get() = demoState ?: synchronized(snapshotDisplay) {
+        serverView?.takeIf { it.first === serverTracking && it.first.state.value.collecting && serverConnection?.isActive != false }?.second
+    } ?: savedState
     private var demo: ConquestDemo? = null
     var demoLabel by mutableStateOf<String?>(null)
         private set
@@ -72,13 +200,15 @@ class ConquestSession private constructor(private val userId: String, private va
         }
     }
 
-    private suspend fun update(action: () -> Unit) = change {
-        savedState = withContext(Dispatchers.IO) {
-            ConquestAccountRestore.withRecordAccess {
-                action()
-                ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
+    private suspend fun update(afterRecord: () -> Unit = {}, action: () -> Unit) = change {
+        try {
+            savedState = withContext(Dispatchers.IO) {
+                ConquestAccountRestore.withRecordAccess {
+                    action()
+                    ConquestViewState(catalog, feature.readSummary(userId), feature.owners(), teams, feature.roadDetails(userId))
+                }
             }
-        }
+        } finally { afterRecord() } // Memory handoff only; no auth or disk inside the sample caller.
     }
 
     suspend fun replayDemo(route: DemoRoute, onSample: suspend (LocationSample) -> Unit = {}): Boolean {
@@ -133,12 +263,12 @@ class ConquestSession private constructor(private val userId: String, private va
         demoTimeUtcMs = null
     }
 
-    fun resetInput() { pipeline.resetObservations(userId) }
+    fun resetInput() { pipeline.resetObservations(userId); serverTracking?.resetInput() }
     suspend fun refresh() = update { pipeline.retryPending() }
     suspend fun selectTeam(teamId: String) = update {
         check(pipeline.selectTeam(userId, teamId)) { "Team cannot change" }
     }
-    suspend fun onSample(sample: LocationSample) = update { pipeline.onSample(sample) }
+    suspend fun onSample(sample: LocationSample) = update(afterRecord={ serverTracking?.onSample(sample) }) { pipeline.onSample(sample) }
 
     companion object {
         private val sessions=mutableMapOf<String,ConquestSession>()
@@ -163,7 +293,13 @@ class ConquestSession private constructor(private val userId: String, private va
             ConquestSession(userId, catalog, feature,
                 ConquestLocationPipeline(feature, catalog, source, pendingStore =
                     FilePendingVisitsStore(File(file.parentFile, "${file.name}.pending"), catalog.version, source, userId)), teams,
-                source==LocationSourceType.MOCK && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,source)
+                source==LocationSourceType.MOCK && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,source,
+                if(source==LocationSourceType.PLEOS) ConquestAccountLink(File(context.filesDir,"conquest/server-accounts"),
+                    userId,if(prefix=="pleos") ConquestServerPartition.PLEOS else ConquestServerPartition.PLEOS_EMULATOR,
+                    catalog.version) else null,context.applicationContext,
+                if(source==LocationSourceType.PLEOS) {
+                    if(prefix=="pleos") ConquestServerPartition.PLEOS else ConquestServerPartition.PLEOS_EMULATOR
+                } else null)
                 .also { sessions[file.canonicalPath]=it }
         } }
     }

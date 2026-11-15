@@ -21,6 +21,12 @@ object ConquestAccountRestore {
     private fun recordsAreEmpty(directory: File): Boolean {
         if (!directory.exists()) return true
         val files = checkNotNull(directory.listFiles()) { "점령 기록 폴더를 읽을 수 없습니다" }
+        // Dedicated namespace for future binding/outbox/cache stores. Unknown entries fail closed.
+        val server = File(directory, "server-accounts")
+        if (server.exists()) {
+            require(server.isDirectory) { "Invalid conquest server account directory" }
+            if (checkNotNull(server.listFiles()).isNotEmpty()) return false
+        }
         val prepared = files.filter { it.name.startsWith("prepared-pleos-") }
         if (!prepared.all { bundle ->
             require(bundle.isDirectory && File(bundle, "receipt").isFile)

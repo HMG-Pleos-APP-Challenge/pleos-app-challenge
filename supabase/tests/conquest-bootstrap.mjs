@@ -1,0 +1,55 @@
+import {PGlite} from '@electric-sql/pglite';
+import {postgis} from '@electric-sql/pglite-postgis';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {buildBootstrap} from '../conquest/build-bootstrap.mjs';
+import {buildReleaseSql,isolateRelease} from '../conquest/build-release.mjs';
+
+const db=new PGlite({extensions:{postgis}});
+let checks=0;
+const pass=name=>console.log(`PASS bootstrap ${++checks}: ${name}`);
+const valid=value=>{for(const [k,v] of Object.entries(value)) if(!['scopes','assetSha256','catalogVersion'].includes(k)) assert.equal(v,true,k);};
+try {
+  await db.waitReady;
+  await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);
+    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;`);
+  await db.exec(await readFile(new URL('../sql-editor/00-schema.sql',import.meta.url),'utf8'));
+  const release=await buildReleaseSql(),bundle=await buildBootstrap();
+  await db.exec(release.sql);
+  const before=(await db.query('select floor(extract(epoch from clock_timestamp())*1000)::bigint n')).rows[0].n;
+  await db.exec(bundle.sql);
+  const after=(await db.query('select floor(extract(epoch from clock_timestamp())*1000)::bigint n')).rows[0].n;
+  const initial=(await db.query(bundle.verifySql)).rows[0].value;valid(initial);
+  for(const s of initial.scopes) assert.ok(Number(s.started_ms)>=Number(before)&&Number(s.started_ms)<=Number(after));
+  pass('1453 directed geometries, two teams, common server S, next KST noon, neutral scopes and paused intake');
+  await assert.rejects(()=>db.exec(bundle.sql),/fresh closed/);await db.exec('rollback');
+  assert.deepEqual((await db.query(bundle.verifySql)).rows[0].value,initial);
+  pass('repeat bootstrap refused without resetting data or moving S');
+  await db.exec('begin');
+  await db.exec('update conquest_internal.road_geometry set path=extensions.st_reverse(path) where ordinal=0');
+  assert.equal((await db.query(bundle.verifySql)).rows[0].value.geometryExact,false);
+  await db.exec('rollback');
+  pass('direction reversal detected even though undirected shape is equal');
+  await db.exec('begin');
+  await db.exec('update conquest_internal.road_geometry set ordinal=ordinal+10000 where ordinal=0');
+  assert.equal((await db.query(bundle.verifySql)).rows[0].value.geometryExact,false);
+  await db.exec('rollback');
+  pass('runtime road ordinal drift detected');
+  const schema='conquest_release_333333333333';
+  await db.exec(isolateRelease(release.sql,schema));
+  const multi=await buildBootstrap({schema,teams:['team-red','team-blue','team-green']});
+  await db.exec(multi.sql);valid((await db.query(multi.verifySql)).rows[0].value);
+  assert.equal((await db.query(`select count(*)::int n from ${schema}.teams`)).rows[0].n,3);
+  pass('technical team expansion works without changing the approved default two');
+  for(const options of [{schema:'public'},{teams:['team-red','team-red']},{teams:['red']},{partitions:['unknown']}])
+    await assert.rejects(()=>buildBootstrap(options));
+  pass('invalid scope, duplicate team and unknown source inputs refused');
+  await db.exec(isolateRelease(release.sql,'conquest_release_444444444444'));
+  const failing=await buildBootstrap({schema:'conquest_release_444444444444'});
+  await db.exec(`create function conquest_release_444444444444.fail_insert() returns trigger language plpgsql as $$begin raise exception 'injected failure';end$$;
+    create trigger fail_insert before insert on conquest_release_444444444444.road_geometry for each row execute function conquest_release_444444444444.fail_insert();`);
+  await assert.rejects(()=>db.exec(failing.sql),/injected failure/);await db.exec('rollback');
+  assert.equal((await db.query('select count(*)::int n from conquest_release_444444444444.teams')).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int n from conquest_release_444444444444.settlement_scopes')).rows[0].n,0);
+  pass('data insertion failure rolls back all seed data and S');
+} finally {await db.close();}

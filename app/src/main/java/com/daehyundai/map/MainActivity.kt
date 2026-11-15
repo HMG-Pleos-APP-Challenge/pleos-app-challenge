@@ -83,6 +83,16 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
     val recording=sdkState.running && sdkState.userId==userId
     var stack by rememberSaveable { mutableStateOf(listOf(Routes.HOME)) }
     val page=stack.last()
+    val conquestAuth=remember(context.applicationContext) { conquestAccountAccess(context.applicationContext) }
+    LaunchedEffect(savedConquest,sdkState.conquest,userId) {
+        listOfNotNull(savedConquest,sdkState.conquest.takeIf { sdkState.userId==userId }).distinct().forEach {
+            it.connectServer(conquestAuth) // Separate rollout gate is false; no membership RPC or signup by default.
+        }
+    }
+    var accountCheck by remember { mutableIntStateOf(0) }
+    LaunchedEffect(page,savedConquest,accountCheck) {
+        if(page==DetailPages.SETTINGS) savedConquest?.inspectServerAccount(conquestAuth)
+    }
     val conquestCanRestore by produceState(false, page, conquest?.state, conquest?.pendingVisitCount) {
         value=false
         if (page==DetailPages.SETTINGS) value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -237,7 +247,8 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
                             Routes.HOME -> HomeScreen(conquestSummary,summary,onNavigate={go(it)},
                                 explorationPreview={ExplorationMapPreview(session)},
                                 conquestPreview={conquest?.state?.let { com.daehyundai.map.feature.conquest.ConquestMapPreview(it.catalog,it.owners,it.teamIds) }},conquestDemo=conquest?.demoLabel!=null,
-                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage,explorationDemo=sharedDriveActive)
+                                conquestAvailable=conquestAvailable,conquestMessage=conquestMessage,explorationDemo=sharedDriveActive,
+                                conquestRecordLabel=conquest?.state?.serverLabel)
                             Routes.CONQUEST_MAP -> {
                                 val error=conquestLoadError
                                 (error ?: conquest?.error)?.let { Text(it,color=MaterialTheme.colorScheme.error) }
@@ -257,13 +268,28 @@ private val sharedDriveSessions = mutableStateMapOf<String, ExplorationSession>(
                             DetailPages.CELLS -> CellsScreen(session) { cell -> cellCol=cell.col;cellRow=cell.row;go(DetailPages.CELL) }
                             DetailPages.CELL -> CellDetailScreen(session,if(cellCol!=null && cellRow!=null) CellIndex(cellCol!!,cellRow!!) else null)
                             DetailPages.LANDMARK -> LandmarkDetailScreen(session,landmarkId,{go(DetailPages.SOURCES)})
-                            Routes.PROFILE -> if (conquestAvailable) ProfileScreen(conquestSummary,summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
+                            Routes.PROFILE -> if (conquestAvailable) ProfileScreen(conquest?.localState?.summary ?: ConquestSummary(userId,null,0,0,null),summary,session?.progress ?: UserProgress(userId,0,1),session?.landmarkSummary,
                                 {go(Routes.EXPLORATION_MAP)},{go(DetailPages.CELLS)},{openLandmark(it)},{go(DetailPages.SETTINGS)},
                                 conquestDemo=conquest?.demoLabel!=null,onConquest={go(Routes.CONQUEST_MAP)},regionDiscovered=session?.regionDiscovered==true)
                                 else Text("점령 요약을 불러온 뒤 프로필을 표시합니다.")
                             DetailPages.SETTINGS -> { PrototypeSettings(recordingStatus,developerEnabled,
                                 {go(DetailPages.SOURCES)},{go(DetailPages.DEVELOPER)})
-                                AccountSettings(userId,conquestCanRestore && canRestoreAccount((liveSession ?: savedSdkSession)?.hasLocalAchievements ?: true)) { (liveSession ?: savedSdkSession)?.syncCloud() }
+                                val accountStatus=savedConquest?.serverAccount
+                                if(accountStatus is com.daehyundai.map.feature.conquest.cloud.ConquestAccountResult.Success) {
+                                    Text("기기에 저장된 계정을 확인했어요. 점령은 이 기기의 기록을 사용합니다.")
+                                } else if(accountStatus is com.daehyundai.map.feature.conquest.cloud.ConquestAccountResult.Unavailable &&
+                                    accountStatus.issue!=com.daehyundai.map.feature.conquest.cloud.ConquestAccountIssue.NOT_CONFIGURED) {
+                                    Text(when(accountStatus.issue) {
+                                        com.daehyundai.map.feature.conquest.cloud.ConquestAccountIssue.NO_SESSION -> "저장된 계정이 아직 없어요. 점령은 이 기기의 기록을 사용합니다."
+                                        com.daehyundai.map.feature.conquest.cloud.ConquestAccountIssue.ACCOUNT_CHANGED -> "계정이 변경됐어요. 다시 확인해 주세요."
+                                        else -> "점령 계정을 확인하지 못했어요. 이 기기의 기록은 유지됩니다."
+                                    })
+                                    OutlinedButton(onClick={accountCheck++}) { Text("점령 계정 다시 확인") }
+                                }
+                                AccountSettings(userId,conquestCanRestore && canRestoreAccount((liveSession ?: savedSdkSession)?.hasLocalAchievements ?: true)) {
+                                    savedConquest?.inspectServerAccount(conquestAuth)
+                                    (liveSession ?: savedSdkSession)?.syncCloud()
+                                }
 
                             }
                             DetailPages.DEVELOPER -> if(developerEnabled) DeveloperTools(userId,sdkSelected,sdkState,mockSession,
